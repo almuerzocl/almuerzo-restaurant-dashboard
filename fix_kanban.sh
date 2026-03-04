@@ -1,0 +1,1 @@
+sed -i '' 's/mainGuest?.name || "Cliente S/N"/mainGuest?.name || res.customer_name || "Cliente S/N"/' /Users/estebanzarate/Documents/Almuerzocl/almuerzo-restaurant-dashboard/src/components/dashboard/ReservationsKanban.tsx
