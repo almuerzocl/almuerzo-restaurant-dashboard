@@ -32,7 +32,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const pathname = usePathname();
     const role = profile?.role || 'user';
     // Full access for administrators or owners
-    const isAdmin = ['ADMIN', 'owner', 'super_admin', 'restaurant_admin'].includes(role);
+    const isAdmin = ['ADMIN', 'owner', 'super_admin', 'restaurant_admin', 'admin'].includes(role);
     // Granular access layers
     const canViewReservations = isAdmin || ['operations_manager', 'reservation_manager'].includes(role);
     const canViewTakeaway = isAdmin || ['operations_manager', 'takeaway_manager'].includes(role);
