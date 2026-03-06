@@ -48,6 +48,7 @@ export default function MenuManagerPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [newItem, setNewItem] = useState({ name: "", price: 0, takeaway_price: 0 });
     const [isAdding, setIsAdding] = useState(false);
+    const [addingItem, setAddingItem] = useState(false);
 
     const fetchMenu = async () => {
         if (!restaurantId) return;
@@ -81,24 +82,48 @@ export default function MenuManagerPage() {
         }
     };
 
-    const handleAdd = async () => {
+    const handleAdd = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        
         if (!newItem.name || newItem.price <= 0) {
             toast.error("Nombre y precio requeridos");
             return;
         }
-        const result = await addMenuItemAction(restaurantId, {
-            ...newItem,
-            category: "General",
-            is_available: true,
-            is_menu_del_dia: false,
-            track_inventory: false,
-            stock_quantity: 0
-        });
-        if (result.success) {
-            toast.success("Plato añadido");
-            setNewItem({ name: "", price: 0, takeaway_price: 0 });
-            setIsAdding(false);
-            fetchMenu();
+
+        if (!restaurantId) {
+            toast.error("Sesión no válida o restaurante no identificado");
+            return;
+        }
+
+        setAddingItem(true);
+        try {
+            const result = await addMenuItemAction(restaurantId, {
+                ...newItem,
+                category: "General",
+                is_available: true,
+                is_menu_del_dia: false,
+                track_inventory: false,
+                stock_quantity: 0
+            });
+            
+            if (result.success) {
+                toast.success("Plato añadido con éxito", {
+                    className: "font-black uppercase text-[10px] tracking-widest",
+                });
+                setNewItem({ name: "", price: 0, takeaway_price: 0 });
+                setIsAdding(false);
+                await fetchMenu();
+            } else {
+                toast.error("Error al guardar plato", {
+                    description: result.error || "No se pudo insertar en la base de datos."
+                });
+            }
+        } catch (error: any) {
+            toast.error("Error de conexión", {
+                description: error.message || "Ocurrió un error inesperado."
+            });
+        } finally {
+            setAddingItem(false);
         }
     };
 
@@ -228,7 +253,7 @@ export default function MenuManagerPage() {
                         <CardTitle className="text-xl font-black uppercase text-slate-800 tracking-tight">Añadir a la Carta</CardTitle>
                     </CardHeader>
                     <CardContent className="p-10 pt-8">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 items-end">
+                        <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-4 gap-8 items-end">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Nombre Comercial</label>
                                 <Input
@@ -242,8 +267,8 @@ export default function MenuManagerPage() {
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Precio Local ($)</label>
                                 <Input
                                     type="number"
-                                    value={newItem.price}
-                                    onChange={e => setNewItem({ ...newItem, price: parseInt(e.target.value) })}
+                                    value={newItem.price || ''}
+                                    onChange={e => setNewItem({ ...newItem, price: parseInt(e.target.value) || 0 })}
                                     className="rounded-2xl h-14 bg-slate-50 border-none font-bold text-slate-800"
                                 />
                             </div>
@@ -251,13 +276,23 @@ export default function MenuManagerPage() {
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Precio Takeaway ($)</label>
                                 <Input
                                     type="number"
-                                    value={newItem.takeaway_price}
-                                    onChange={e => setNewItem({ ...newItem, takeaway_price: parseInt(e.target.value) })}
+                                    value={newItem.takeaway_price || ''}
+                                    onChange={e => setNewItem({ ...newItem, takeaway_price: parseInt(e.target.value) || 0 })}
                                     className="rounded-2xl h-14 bg-blue-50/50 border-none font-bold text-blue-700"
                                 />
                             </div>
-                            <Button onClick={handleAdd} className="rounded-2xl h-14 font-black uppercase tracking-widest bg-slate-900 hover:bg-black">Añadir Plato</Button>
-                        </div>
+                            <Button 
+                                type="submit" 
+                                disabled={addingItem}
+                                className="rounded-2xl h-14 font-black uppercase tracking-widest bg-slate-900 hover:bg-black group transition-all"
+                            >
+                                {addingItem ? (
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                ) : (
+                                    <>Añadir Plato <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" /></>
+                                )}
+                            </Button>
+                        </form>
                     </CardContent>
                 </Card>
             )}
