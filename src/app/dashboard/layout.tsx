@@ -30,13 +30,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const { profile, signOut } = useAuth();
     const [restaurantName, setRestaurantName] = useState<string>("");
     const pathname = usePathname();
-    const role = profile?.role || 'user';
+    const role = profile?.role?.toUpperCase() || 'USER';
     // Full access for administrators or owners
-    const isAdmin = ['ADMIN', 'owner', 'super_admin', 'restaurant_admin', 'admin'].includes(role);
+    const isAdmin = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'RESTAURANT_ADMIN'].includes(role);
     // Granular access layers
-    const canViewReservations = isAdmin || ['operations_manager', 'reservation_manager'].includes(role);
-    const canViewTakeaway = isAdmin || ['operations_manager', 'takeaway_manager'].includes(role);
-    const canViewMenu = isAdmin || ['operations_manager', 'menu_manager'].includes(role);
+    const canViewReservations = isAdmin || ['OPERATIONS_MANAGER', 'RESERVATION_MANAGER'].includes(role);
+    const canViewTakeaway = isAdmin || ['OPERATIONS_MANAGER', 'TAKEAWAY_MANAGER'].includes(role);
+    const canViewMenu = isAdmin || ['OPERATIONS_MANAGER', 'MENU_MANAGER'].includes(role);
     const canViewSettings = isAdmin; // only admins can access system settings
     const canViewAccount = isAdmin; // only admins can view account page
     const { unreadCount } = useNotifications();

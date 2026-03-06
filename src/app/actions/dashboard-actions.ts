@@ -68,6 +68,39 @@ export async function blockSeatsAction(
     }
 }
 
+export async function getReservationBlocksAction(restaurantId: string) {
+    try {
+        const supabase = await createClient();
+        const { data, error } = await supabase
+            .from("reservation_blocks")
+            .select("*")
+            .eq("restaurant_id", restaurantId)
+            .order("start_time", { ascending: true });
+
+        if (error) throw error;
+        return { success: true, data };
+    } catch (error: any) {
+        console.error("Error fetching blocks:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function deleteReservationBlockAction(blockId: string) {
+    try {
+        const supabase = await createClient();
+        const { error } = await supabase
+            .from("reservation_blocks")
+            .delete()
+            .eq("id", blockId);
+
+        if (error) throw error;
+        return { success: true };
+    } catch (error: any) {
+        console.error("Error deleting block:", error);
+        return { success: false, error: error.message };
+    }
+}
+
 export async function createManualReservationAction(params: {
     restaurantId: string;
     dateTime: string;
@@ -274,9 +307,9 @@ export async function updateRestaurantSettingsAction(restaurantId: string, updat
 
 export async function getMenuItemsAction(restaurantId: string, role: string) {
     try {
-        // Verify role access
-        const allowedRoles = ['ADMIN', 'operations_manager', 'menu_manager'];
-        if (!allowedRoles.includes(role)) {
+        const roleUpper = role?.toUpperCase();
+        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'MENU_MANAGER', 'OWNER', 'RESTAURANT_ADMIN'];
+        if (!allowedRoles.includes(roleUpper)) {
             return { success: false, error: 'Access denied: insufficient permissions for menu management.' };
         }
         const supabase = await createClient();
@@ -376,9 +409,9 @@ export async function getPaymentHistoryAction(restaurantId: string) {
 
 export async function getReservationsAction(restaurantId: string, role: string) {
     try {
-        // Verify role access
-        const allowedRoles = ['ADMIN', 'operations_manager', 'reservation_manager'];
-        if (!allowedRoles.includes(role)) {
+        const roleUpper = role?.toUpperCase();
+        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'RESERVATION_MANAGER', 'OWNER', 'RESTAURANT_ADMIN'];
+        if (!allowedRoles.includes(roleUpper)) {
             return { success: false, error: 'Access denied: insufficient permissions for reservations.' };
         }
         const supabase = await createClient();
@@ -486,9 +519,9 @@ export async function updateReservationStatusAction(reservationId: string, statu
 
 export async function getTakeawayOrdersAction(restaurantId: string, role: string) {
     try {
-        // Verify role access
-        const allowedRoles = ['ADMIN', 'operations_manager', 'takeaway_manager'];
-        if (!allowedRoles.includes(role)) {
+        const roleUpper = role?.toUpperCase();
+        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'TAKEAWAY_MANAGER', 'OWNER', 'RESTAURANT_ADMIN'];
+        if (!allowedRoles.includes(roleUpper)) {
             return { success: false, error: 'Access denied: insufficient permissions for takeaway.' };
         }
         const supabase = await createClient();
@@ -565,6 +598,90 @@ export async function updateTakeawayStatusAction(orderId: string, status: string
         return { success: true };
     } catch (error: any) {
         console.error("Error updating takeaway status:", error);
+        return { success: false, error: error.message };
+    }
+}
+export async function sendDailyMenuAction(restaurantId: string) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Get Daily Menu Items
+        const { data: items, error: itemsError } = await supabase
+            .from("menu_items")
+            .select("*")
+            .eq("restaurant_id", restaurantId)
+            .eq("is_menu_del_dia", true);
+
+        if (itemsError) throw itemsError;
+        if (!items || items.length === 0) {
+            return { success: false, error: "No hay platos marcados como menú del día." };
+        }
+
+        // 2. Get Restaurant Info
+        const { data: restaurant, error: restError } = await supabase
+            .from("restaurants")
+            .select("name")
+            .eq("id", restaurantId)
+            .single();
+
+        if (restError) throw restError;
+
+        // 3. Get Subscribers
+        const { data: subscribers, error: subsError } = await supabase
+            .from("profiles")
+            .select("email, first_name")
+            .contains("subscribed_daily_menu_ids", [restaurantId]);
+
+        if (subsError) throw subsError;
+        if (!subscribers || subscribers.length === 0) {
+            return { success: false, error: "No tienes suscriptores registrados para el menú del día." };
+        }
+
+        // 4. Send Emails
+        const itemsHtml = items.map(item => `
+            <div style="padding: 15px; border-bottom: 1px solid #f1f5f9;">
+                <h3 style="margin: 0; color: #1e293b; font-size: 16px;">${item.name}</h3>
+                <p style="margin: 5px 0; color: #64748b; font-size: 14px;">$${item.price.toLocaleString('es-CL')}</p>
+            </div>
+        `).join('');
+
+        const sendPromises = subscribers.map(sub => 
+            sendEmailAction({
+                to: sub.email,
+                subject: `🍽️ Menú del Día - ${restaurant.name}`,
+                text: `Hola ${sub.first_name || 'Comensal'},\n\nAquí tienes el menú de hoy en ${restaurant.name}:\n\n${items.map(i => `- ${i.name}: $${i.price}`).join('\n')}\n\n¡Te esperamos!`,
+                html: `
+                    <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #f1f5f9; border-radius: 24px; overflow: hidden; background: white;">
+                        <div style="background: #1e293b; color: white; padding: 40px 20px; text-align: center;">
+                            <span style="font-size: 40px;">🍽️</span>
+                            <h1 style="margin: 10px 0 0 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px;">¡Menú de Hoy!</h1>
+                            <p style="margin: 5px 0 0 0; opacity: 0.7; font-weight: 500;">${restaurant.name}</p>
+                        </div>
+                        <div style="padding: 20px;">
+                            ${itemsHtml}
+                        </div>
+                        <div style="padding: 30px; text-align: center; background: #f8fafc;">
+                            <p style="margin-bottom: 20px; font-size: 14px; color: #64748b; font-weight: 500;">¿Te tienta algo? Haz tu reserva o pide para retirar.</p>
+                            <a href="https://v5.almuerzo.cl/restaurant/${restaurantId}" style="background: #10b981; color: white; padding: 14px 28px; border-radius: 14px; text-decoration: none; font-weight: 800; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
+                                Ver Detalles en Almuerzo.cl
+                            </a>
+                        </div>
+                    </div>
+                `
+            })
+        );
+
+        await Promise.all(sendPromises);
+
+        // 5. Update last sent timestamp
+        await supabase
+            .from("restaurants")
+            .update({ last_daily_menu_sent_at: new Date().toISOString() })
+            .eq("id", restaurantId);
+
+        return { success: true, count: subscribers.length };
+    } catch (error: any) {
+        console.error("Error sending daily menu:", error);
         return { success: false, error: error.message };
     }
 }

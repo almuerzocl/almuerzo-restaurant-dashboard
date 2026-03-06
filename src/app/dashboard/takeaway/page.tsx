@@ -17,7 +17,8 @@ import TakeawayKanban from "@/components/dashboard/TakeawayKanban";
 
 export default function TakeawayPage() {
     const { profile } = useAuth();
-    const canViewTakeaway = profile?.role && (profile.role === 'ADMIN' || ['operations_manager', 'takeaway_manager'].includes(profile.role));
+    const role = profile?.role?.toUpperCase();
+    const canViewTakeaway = role && ['ADMIN', 'OPERATIONS_MANAGER', 'TAKEAWAY_MANAGER', 'OWNER'].includes(role);
     if (!canViewTakeaway) {
         return (
             <div className="flex items-center justify-center h-full">

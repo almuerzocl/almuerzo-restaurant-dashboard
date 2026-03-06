@@ -3,14 +3,17 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
+    getRestaurantSettingsAction,
+    updateRestaurantSettingsAction,
+    getReservationBlocksAction,
+    deleteReservationBlockAction,
+    blockSeatsAction
+} from "@/app/actions/dashboard-actions";
+import {
     Settings as SettingsIcon, CalendarCheck, ShoppingBag, Clock, Users, Trophy, DollarSign,
     Package, Store, Timer, AlertCircle, Info, MapPin, Phone, FileText, ChevronRight,
-    Camera
+    Camera, Calendar, Trash2, Plus, X
 } from "lucide-react";
-import {
-    getRestaurantSettingsAction,
-    updateRestaurantSettingsAction
-} from "@/app/actions/dashboard-actions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -31,18 +34,28 @@ export default function SystemManagementPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [settings, setSettings] = useState<any>(null);
+    const [blocks, setBlocks] = useState<any[]>([]);
     const [fetchError, setFetchError] = useState<string | null>(null);
+    const [newBlock, setNewBlock] = useState({ start: "", end: "", reason: "", seats: 0 });
 
     const fetchData = async () => {
         if (!restaurantId) return;
         setLoading(true);
         setFetchError(null);
         try {
-            const settingsRes = await getRestaurantSettingsAction(restaurantId);
+            const [settingsRes, blocksRes] = await Promise.all([
+                getRestaurantSettingsAction(restaurantId),
+                getReservationBlocksAction(restaurantId)
+            ]);
+            
             if (settingsRes.success) {
                 setSettings(settingsRes.data);
             } else {
                 setFetchError(settingsRes.error || "Error al cargar configuración");
+            }
+
+            if (blocksRes.success) {
+                setBlocks(blocksRes.data || []);
             }
         } catch (e: any) {
             setFetchError(e.message || "Error de conexión");
@@ -134,6 +147,9 @@ export default function SystemManagementPage() {
                     </TabsTrigger>
                     <TabsTrigger value="restaurante" className="rounded-full px-8 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white font-black uppercase text-[10px] tracking-widest transition-all duration-300 flex items-center gap-2">
                         <Store className="w-4 h-4" /> Datos del Local
+                    </TabsTrigger>
+                    <TabsTrigger value="horarios" className="rounded-full px-8 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white font-black uppercase text-[10px] tracking-widest transition-all duration-300 flex items-center gap-2">
+                        <Calendar className="w-4 h-4" /> Horarios y Bloqueos
                     </TabsTrigger>
                 </TabsList>
 
@@ -527,6 +543,170 @@ export default function SystemManagementPage() {
                             </div>
                         </div>
                     </Card>
+                </TabsContent>
+                <TabsContent value="horarios" className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-12 pb-20">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* Horarios de Atención */}
+                        <Card className="rounded-[3rem] p-8 shadow-xl border-none bg-white">
+                            <CardHeader className="px-0 pt-0 pb-8">
+                                <CardTitle className="text-xl font-black uppercase text-slate-800 tracking-tight flex items-center gap-3">
+                                    <Clock className="w-6 h-6 text-primary" /> Horarios de Atención
+                                </CardTitle>
+                                <CardDescription className="text-[10px] font-bold uppercase text-slate-400 italic mt-1 leading-relaxed">
+                                    Configura los días y horas en que tu restaurante está abierto al público.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="px-0 space-y-6">
+                                {Object.entries({
+                                    mon: "Lunes", tue: "Martes", wed: "Miércoles", thu: "Jueves",
+                                    fri: "Viernes", sat: "Sábado", sun: "Domingo"
+                                }).map(([key, label]) => {
+                                    const daySettings = settings.operating_hours?.[key] || { open: "09:00", close: "22:00", is_closed: true };
+                                    return (
+                                        <div key={key} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100/50 hover:bg-white transition-all group shadow-sm hover:shadow-md">
+                                            <div className="flex items-center gap-4">
+                                                <Switch
+                                                    checked={!daySettings.is_closed}
+                                                    onCheckedChange={(v) => {
+                                                        const newHours = { ...settings.operating_hours, [key]: { ...daySettings, is_closed: !v } };
+                                                        handleSave({ operating_hours: newHours });
+                                                    }}
+                                                    className="data-[state=checked]:bg-emerald-500"
+                                                />
+                                                <span className="font-black text-sm uppercase tracking-tight text-slate-700 w-24">{label}</span>
+                                            </div>
+
+                                            <div className={cn("flex items-center gap-2 transition-all duration-300", daySettings.is_closed ? "opacity-30 grayscale pointer-events-none" : "opacity-100")}>
+                                                <Input
+                                                    type="time"
+                                                    value={daySettings.open}
+                                                    onChange={(e) => {
+                                                        const newHours = { ...settings.operating_hours, [key]: { ...daySettings, open: e.target.value } };
+                                                        handleSave({ operating_hours: newHours });
+                                                    }}
+                                                    className="h-10 w-28 rounded-xl bg-white border-slate-200 font-bold text-center"
+                                                />
+                                                <span className="text-xs font-black text-slate-300">A</span>
+                                                <Input
+                                                    type="time"
+                                                    value={daySettings.close}
+                                                    onChange={(e) => {
+                                                        const newHours = { ...settings.operating_hours, [key]: { ...daySettings, close: e.target.value } };
+                                                        handleSave({ operating_hours: newHours });
+                                                    }}
+                                                    className="h-10 w-28 rounded-xl bg-white border-slate-200 font-bold text-center"
+                                                />
+                                            </div>
+
+                                            {daySettings.is_closed && (
+                                                <Badge variant="outline" className="text-[8px] font-black uppercase bg-slate-100 text-slate-400 border-none px-3 py-1">Cerrado</Badge>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </CardContent>
+                        </Card>
+
+                        {/* Bloqueos y Vacaciones */}
+                        <div className="space-y-8">
+                            <Card className="rounded-[3rem] p-8 shadow-xl border-2 border-slate-900 bg-slate-900 text-white overflow-hidden relative">
+                                <div className="absolute top-0 right-0 p-8 opacity-10"><Calendar className="w-32 h-32" /></div>
+                                <CardHeader className="px-0 pt-0 relative z-10">
+                                    <CardTitle className="text-xl font-black uppercase tracking-tight">Nueva Excepción de Servicio</CardTitle>
+                                    <CardDescription className="text-[10px] font-bold uppercase text-slate-400">Bloquea fechas por vacaciones o eventos privados</CardDescription>
+                                </CardHeader>
+                                <CardContent className="px-0 space-y-6 pt-4 relative z-10">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Desde</Label>
+                                            <Input
+                                                type="datetime-local"
+                                                value={newBlock.start}
+                                                onChange={(e) => setNewBlock(prev => ({ ...prev, start: e.target.value }))}
+                                                className="bg-slate-800 border-none rounded-xl text-white h-12"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Hasta</Label>
+                                            <Input
+                                                type="datetime-local"
+                                                value={newBlock.end}
+                                                onChange={(e) => setNewBlock(prev => ({ ...prev, end: e.target.value }))}
+                                                className="bg-slate-800 border-none rounded-xl text-white h-12"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Motivo (Interno)</Label>
+                                        <Input
+                                            placeholder="Ej: Vacaciones de Invierno"
+                                            value={newBlock.reason}
+                                            onChange={(e) => setNewBlock(prev => ({ ...prev, reason: e.target.value }))}
+                                            className="bg-slate-800 border-none rounded-xl text-white h-12"
+                                        />
+                                    </div>
+                                    <Button
+                                        className="w-full bg-primary hover:bg-primary/90 text-white font-black h-14 rounded-2xl tracking-widest uppercase text-xs"
+                                        onClick={async () => {
+                                            if (!newBlock.start || !newBlock.end || !newBlock.reason) {
+                                                toast.error("Datos incompletos");
+                                                return;
+                                            }
+                                            const res = await blockSeatsAction(restaurantId, newBlock.start, newBlock.end, settings.capacity, newBlock.reason);
+                                            if (res.success) {
+                                                toast.success("Periodo bloqueado");
+                                                setNewBlock({ start: "", end: "", reason: "", seats: 0 });
+                                                fetchData();
+                                            }
+                                        }}
+                                    >
+                                        <Plus className="w-4 h-4 mr-2" /> Agregar Bloqueo de Servicio
+                                    </Button>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="rounded-[3rem] p-8 shadow-xl border-none bg-white">
+                                <CardHeader className="px-0 pt-0">
+                                    <CardTitle className="text-lg font-black uppercase text-slate-800 tracking-tight">Periodos Bloqueados</CardTitle>
+                                </CardHeader>
+                                <CardContent className="px-0 max-h-[400px] overflow-y-auto space-y-4 pr-2">
+                                    {blocks.length === 0 ? (
+                                        <div className="text-center py-12 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-100">
+                                            <p className="text-xs font-bold text-slate-300 uppercase">Sin bloqueos programados</p>
+                                        </div>
+                                    ) : (
+                                        blocks.map((block) => (
+                                            <div key={block.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-all group">
+                                                <div className="space-y-1">
+                                                    <div className="font-black text-xs uppercase tracking-tight text-slate-700">{block.reason}</div>
+                                                    <div className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-2">
+                                                        <Calendar className="w-3 h-3" />
+                                                        {new Date(block.start_time).toLocaleDateString()} {new Date(block.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 
+                                                        {" - "}
+                                                        {new Date(block.end_time).toLocaleDateString()} {new Date(block.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </div>
+                                                </div>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="rounded-full hover:bg-red-50 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                                    onClick={async () => {
+                                                        const res = await deleteReservationBlockAction(block.id);
+                                                        if (res.success) {
+                                                            toast.success("Bloqueo eliminado");
+                                                            fetchData();
+                                                        }
+                                                    }}
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        ))
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </div>
                 </TabsContent>
             </Tabs>
         </div>

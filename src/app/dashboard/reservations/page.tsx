@@ -16,7 +16,8 @@ import ReservationsKanban from "@/components/dashboard/ReservationsKanban";
 
 export default function ReservationsPage() {
     const { profile } = useAuth();
-    const canViewReservations = profile?.role && (profile.role === 'ADMIN' || ['operations_manager', 'reservation_manager'].includes(profile.role));
+    const role = profile?.role?.toUpperCase();
+    const canViewReservations = role && ['ADMIN', 'OPERATIONS_MANAGER', 'RESERVATION_MANAGER', 'OWNER'].includes(role);
     if (!canViewReservations) {
         return (
             <div className="flex items-center justify-center h-full">
