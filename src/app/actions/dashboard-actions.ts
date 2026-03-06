@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { sendEmailAction } from "./email-actions";
 
 export async function getDashboardMetricsAction(restaurantId: string) {
@@ -48,7 +49,7 @@ export async function blockSeatsAction(
     reason: string
 ) {
     try {
-        const supabase = await createClient();
+        const supabase = createAdminClient();
         const { error } = await supabase
             .from("reservation_blocks")
             .insert({
@@ -87,7 +88,7 @@ export async function getReservationBlocksAction(restaurantId: string) {
 
 export async function deleteReservationBlockAction(blockId: string) {
     try {
-        const supabase = await createClient();
+        const supabase = createAdminClient();
         const { error } = await supabase
             .from("reservation_blocks")
             .delete()
@@ -329,7 +330,7 @@ export async function getMenuItemsAction(restaurantId: string, role: string) {
 
 export async function updateMenuItemAction(itemId: string, updates: any) {
     try {
-        const supabase = await createClient();
+        const supabase = createAdminClient();
         const { error } = await supabase
             .from("menu_items")
             .update(updates)
@@ -345,7 +346,7 @@ export async function updateMenuItemAction(itemId: string, updates: any) {
 
 export async function addMenuItemAction(restaurantId: string, item: any) {
     try {
-        const supabase = await createClient();
+        const supabase = createAdminClient();
         const { error } = await supabase
             .from("menu_items")
             .insert({ ...item, restaurant_id: restaurantId });
@@ -360,7 +361,7 @@ export async function addMenuItemAction(restaurantId: string, item: any) {
 
 export async function deleteMenuItemAction(itemId: string) {
     try {
-        const supabase = await createClient();
+        const supabase = createAdminClient();
         const { error } = await supabase
             .from("menu_items")
             .delete()
