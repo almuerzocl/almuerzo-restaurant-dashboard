@@ -92,10 +92,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     const signOut = async () => {
-        await supabase.auth.signOut();
-        setUser(null);
-        setProfile(null);
-        router.push("/login");
+        setLoading(true);
+        try {
+            await supabase.auth.signOut();
+            setUser(null);
+            setProfile(null);
+            // Redirigir y forzar limpieza total del estado del cliente
+            window.location.replace("/login");
+        } catch (error) {
+            console.error("Error signing out:", error);
+            window.location.replace("/login");
+        }
     };
 
     return (
