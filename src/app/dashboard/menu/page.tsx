@@ -39,7 +39,7 @@ import { Separator } from "@/components/ui/separator";
 export default function MenuManagerPage() {
     const { profile } = useAuth();
     const role = profile?.role?.toUpperCase();
-    const canViewMenu = role && ['ADMIN', 'OPERATIONS_MANAGER', 'MENU_MANAGER', 'OWNER'].includes(role);
+    const canViewMenu = role && ['ADMIN', 'OPERATIONS_MANAGER', 'MENU_MANAGER', 'OWNER', 'SUPER_ADMIN', 'RESTAURANT_ADMIN'].includes(role);
     
     const restaurantId = profile?.restaurant_id;
     const [loading, setLoading] = useState(true);
@@ -191,7 +191,7 @@ export default function MenuManagerPage() {
                         variant={isAdding ? "outline" : "default"}
                         className="rounded-[1.2rem] font-black uppercase text-[10px] tracking-widest px-8 h-14 shadow-xl hover:scale-105 transition-transform duration-300"
                     >
-                        {isAdding ? "Cancelar" : <><Plus className="w-5 h-5 mr-1 stroke-[3px]" /> Nuevo Item</>}
+                        {isAdding ? "Cancelar" : <><Plus className="w-5 h-5 mr-1 stroke-[3px]" /> Añadir Plato</>}
                     </Button>
                 </div>
             </div>
@@ -256,7 +256,7 @@ export default function MenuManagerPage() {
                                     className="rounded-2xl h-14 bg-blue-50/50 border-none font-bold text-blue-700"
                                 />
                             </div>
-                            <Button onClick={handleAdd} className="rounded-2xl h-14 font-black uppercase tracking-widest bg-slate-900 hover:bg-black">Añadir Ahora</Button>
+                            <Button onClick={handleAdd} className="rounded-2xl h-14 font-black uppercase tracking-widest bg-slate-900 hover:bg-black">Añadir Plato</Button>
                         </div>
                     </CardContent>
                 </Card>

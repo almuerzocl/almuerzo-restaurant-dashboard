@@ -28,39 +28,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         let mounted = true;
 
-        async function getInitialSession() {
-            const { data: { session }, error } = await supabase.auth.getSession();
-
+        const syncAuth = async (session: any) => {
             if (!mounted) return;
-
-            if (error || !session?.user) {
+            
+            if (session?.user) {
+                setUser(session.user);
+                await fetchProfile(session.user.id);
+            } else {
+                setUser(null);
+                setProfile(null);
                 setLoading(false);
-                if (pathname !== "/login") {
+                // Solo redirigir si no estamos ya en login para evitar bucles
+                if (window.location.pathname !== "/login") {
                     router.push("/login");
                 }
-                return;
             }
+        };
 
-            setUser(session.user);
-            await fetchProfile(session.user.id);
-        }
+        // 1. Obtener sesión inicial
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            syncAuth(session);
+        });
 
-        getInitialSession();
-
+        // 2. Escuchar cambios persistentes
         const { data: authListener } = supabase.auth.onAuthStateChange(
             async (event, session) => {
-                if (!mounted) return;
-
-                if (session?.user) {
-                    setUser(session.user);
-                    await fetchProfile(session.user.id);
-                } else {
+                if (event === 'SIGNED_OUT') {
                     setUser(null);
                     setProfile(null);
                     setLoading(false);
-                    if (pathname !== "/login") {
-                        router.push("/login");
-                    }
+                    router.push("/login");
+                } else if (session) {
+                    syncAuth(session);
                 }
             }
         );
