@@ -102,8 +102,8 @@ export default function MenuManagerPage() {
                 category: "General",
                 is_available: true,
                 is_menu_del_dia: false,
-                track_inventory: false,
-                stock_quantity: 0
+                stock_managed: false,
+                current_stock: 0
             });
             
             if (result.success) {
@@ -376,17 +376,17 @@ export default function MenuManagerPage() {
                                                         <span className="text-[9px] font-black uppercase tracking-tighter">Control</span>
                                                     </div>
                                                     <Switch 
-                                                        checked={item.track_inventory} 
-                                                        onCheckedChange={(v) => handleToggle(item.id, 'track_inventory', v)}
+                                                        checked={item.stock_managed} 
+                                                        onCheckedChange={(v) => handleToggle(item.id, 'stock_managed', v)}
                                                         className="scale-75"
                                                     />
                                                 </div>
                                                 
-                                                <div className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${item.track_inventory ? 'bg-slate-50 border-slate-100' : 'bg-transparent border-transparent opacity-20 pointer-events-none'}`}>
+                                                <div className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${item.stock_managed ? 'bg-slate-50 border-slate-100' : 'bg-transparent border-transparent opacity-20 pointer-events-none'}`}>
                                                     <Input
                                                         type="number"
-                                                        defaultValue={item.stock_quantity || 0}
-                                                        onBlur={(e) => handleUpdate(item.id, { stock_quantity: parseInt(e.target.value) })}
+                                                        defaultValue={item.current_stock || 0}
+                                                        onBlur={(e) => handleUpdate(item.id, { current_stock: parseInt(e.target.value) })}
                                                         className="h-8 w-16 p-1 text-center font-black bg-white rounded-lg border-none shadow-sm text-sm"
                                                     />
                                                     <span className="text-[10px] font-black text-slate-400 uppercase text-xs">Unidades</span>
