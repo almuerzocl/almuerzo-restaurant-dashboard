@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import BlockSeatsDialog from "@/components/dashboard/BlockSeatsDialog";
 import ManualReservationDialog from "@/components/dashboard/ManualReservationDialog";
 import ReservationList from "@/components/dashboard/ReservationList";
 import ReservationsKanban from "@/components/dashboard/ReservationsKanban";
+import { trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 
 export default function ReservationsPage() {
     const { profile } = useAuth();
@@ -26,6 +27,13 @@ export default function ReservationsPage() {
         );
     }
     const [activeTab, setActiveTab] = useState("panel");
+
+    // Track 'view_reservations' when entering reservations page
+    useEffect(() => {
+        if (profile?.restaurant_id && profile?.id) {
+            trackAnalyticsEventAction(profile.restaurant_id!, 'view_reservations', profile.id);
+        }
+    }, [profile?.restaurant_id, profile?.id]);
 
     return (
         <div className="flex flex-col gap-6 max-w-7xl mx-auto pb-20">

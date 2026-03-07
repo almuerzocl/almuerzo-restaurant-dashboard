@@ -3,6 +3,15 @@
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { sendEmailAction } from "./email-actions";
+import { BetaAnalyticsDataClient } from "@google-analytics/data";
+
+const analyticsDataClient = new BetaAnalyticsDataClient({
+    credentials: {
+        client_email: process.env.GA_CLIENT_EMAIL,
+        private_key: process.env.GA_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    }
+});
+
 
 export async function getDashboardMetricsAction(restaurantId: string) {
     try {
@@ -246,9 +255,89 @@ export async function getAnalyticsReportAction(
     }
 }
 
+export async function getGA4StatsAction(
+    restaurantId: string,
+    startDate: string,
+    endDate: string
+) {
+    try {
+        const propertyId = process.env.GA_PROPERTY_ID;
+        if (!propertyId) {
+            return { success: false, error: "GA_PROPERTY_ID no está configurado." };
+        }
+
+        const formattedStartDate = startDate.split('T')[0];
+        const formattedEndDate = endDate.split('T')[0];
+
+        // Consulta de las sesiones activas en la ruta o evento para el restaurante especificado
+        const [response] = await analyticsDataClient.runReport({
+            property: `properties/${propertyId}`,
+            dateRanges: [
+                {
+                    startDate: formattedStartDate,
+                    endDate: formattedEndDate,
+                },
+            ],
+            dimensions: [
+                {
+                    name: "customEvent:restaurant_id", // Asume que GA4 tiene el custom dimension 'restaurant_id'
+                },
+            ],
+            metrics: [
+                {
+                    name: "sessions",
+                },
+                {
+                    name: "activeUsers",
+                }
+            ],
+            dimensionFilter: {
+                filter: {
+                    fieldName: "customEvent:restaurant_id",
+                    stringFilter: {
+                        value: restaurantId,
+                    }
+                }
+            }
+        });
+
+        const activeUsers = response.rows?.[0]?.metricValues?.[1]?.value || "0";
+        const sessions = response.rows?.[0]?.metricValues?.[0]?.value || "0";
+
+        // Consulta del total de sesiones de la plataforma (para el promedio)
+        const [avgResponse] = await analyticsDataClient.runReport({
+             property: `properties/${propertyId}`,
+             dateRanges: [
+                 {
+                     startDate: formattedStartDate,
+                     endDate: formattedEndDate,
+                 },
+             ],
+             metrics: [
+                 { name: "sessions" },
+             ],
+         });
+         
+        const totalPlatformSessions = avgResponse.rows?.[0]?.metricValues?.[0]?.value || "0";
+
+        return {
+            success: true,
+            data: {
+                unique_users: parseInt(activeUsers, 10),
+                app_sessions: parseInt(sessions, 10),
+                total_platform_sessions: parseInt(totalPlatformSessions, 10),
+            }
+        };
+
+    } catch (error: any) {
+        console.error("Error obteniendo datos de GA4:", error);
+        return { success: false, error: error.message };
+    }
+}
+
 export async function trackAnalyticsEventAction(
     restaurantId: string,
-    eventType: 'view_home' | 'view_menu' | 'reservation_start' | 'takeaway_start',
+    eventType: 'view_home' | 'view_menu' | 'view_reservations' | 'view_takeaway' | 'view_reports' | 'reservation_start' | 'reservation_confirm' | 'reservation_checkin' | 'takeaway_start' | 'takeaway_confirm',
     userId?: string
 ) {
     try {

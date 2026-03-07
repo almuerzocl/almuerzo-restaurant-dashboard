@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -14,6 +14,7 @@ import { useAuth } from "@/context/AuthContext";
 import TakeawayMetrics from "@/components/dashboard/TakeawayMetrics";
 import TakeawayOrderList from "@/components/dashboard/TakeawayOrderList";
 import TakeawayKanban from "@/components/dashboard/TakeawayKanban";
+import { trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 
 export default function TakeawayPage() {
     const { profile } = useAuth();
@@ -27,6 +28,12 @@ export default function TakeawayPage() {
         );
     }
     const [activeTab, setActiveTab] = useState("panel");
+
+    useEffect(() => {
+        if (profile?.restaurant_id && profile?.id) {
+            trackAnalyticsEventAction(profile.restaurant_id!, 'view_takeaway', profile.id);
+        }
+    }, [profile?.restaurant_id, profile?.id]);
 
     return (
         <div className="flex flex-col gap-6 max-w-7xl mx-auto pb-20">

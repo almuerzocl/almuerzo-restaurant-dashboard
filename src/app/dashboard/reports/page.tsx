@@ -18,7 +18,7 @@ import {
     ArrowUpRight,
     ArrowDownRight
 } from "lucide-react";
-import { getAnalyticsReportAction } from "@/app/actions/dashboard-actions";
+import { getAnalyticsReportAction, getGA4StatsAction, trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,16 +46,39 @@ export default function AnalyticsPage() {
             startTime.setDate(startTime.getDate() - 7);
         }
 
-        const result = await getAnalyticsReportAction(restaurantId, startTime.toISOString(), endTime.toISOString());
+        const startTimeStr = startTime.toISOString();
+        const endTimeStr = endTime.toISOString();
+        
+        const [result, ga4Result] = await Promise.all([
+            getAnalyticsReportAction(restaurantId, startTimeStr, endTimeStr),
+            getGA4StatsAction(restaurantId, startTimeStr, endTimeStr)
+        ]);
+
         if (result.success) {
-            setStats(result.data);
+            const finalStats = result.data;
+            if (ga4Result.success && ga4Result.data) {
+                if (!finalStats.local) finalStats.local = {};
+                if (!finalStats.local.pwa) finalStats.local.pwa = { unique_users: 0, app_sessions: 0 };
+                if (!finalStats.platform_avg) finalStats.platform_avg = {};
+                if (!finalStats.platform_avg.pwa) finalStats.platform_avg.pwa = { unique_users: 0, app_sessions: 0 };
+
+                finalStats.local.pwa.app_sessions = ga4Result.data.app_sessions;
+                finalStats.local.pwa.unique_users = ga4Result.data.unique_users;
+                
+                // Assuming ~ 100 restaurants for average, otherwise backend needs to pass this count
+                finalStats.platform_avg.pwa.app_sessions = Math.round(ga4Result.data.total_platform_sessions / 100) || 0;
+            }
+            setStats(finalStats);
         }
         setLoading(false);
     };
 
     useEffect(() => {
         fetchStats(range);
-    }, [restaurantId, range]);
+        if (restaurantId && profile?.id) {
+            trackAnalyticsEventAction(restaurantId, 'view_reports', profile.id);
+        }
+    }, [restaurantId, range, profile?.id]);
 
     if (!stats && loading) {
         return (
@@ -78,6 +101,9 @@ export default function AnalyticsPage() {
     const local = stats?.local || {};
     const platform = stats?.platform_avg || {};
 
+    const pwa = local.pwa || { unique_users: 0, app_sessions: 0 };
+    const avgPwa = platform.pwa || { unique_users: 0, app_sessions: 0 };
+
     const funnel = local.funnel || {
         home_views: 0,
         menu_views: 0,
@@ -92,12 +118,23 @@ export default function AnalyticsPage() {
         subscriptions: 0
     };
 
+    const financial = local.financial || {
+        total_revenue: 0,
+        avg_ticket: 0
+    };
+
+    const avgFinancial = platform.financial || {
+        total_revenue: 0,
+        avg_ticket: 0
+    };
+
     const avgFunnel = platform.funnel || {};
     const avgCurrent = platform.current || {};
 
-    const getConversion = (currentVal: number, previousVal: number) => {
-        if (previousVal === 0) return 0;
-        return ((currentVal / previousVal) * 100).toFixed(1);
+    const getConversion = (currentVal: number, previousVal: number): number => {
+        if (!previousVal || previousVal === 0) return 0;
+        const res = ((currentVal / previousVal) * 100);
+        return Math.round(res * 10) / 10;
     };
 
     const ComparisonBadge = ({ localVal, platformVal, isPercentage = false }: { localVal: number, platformVal: number, isPercentage?: boolean }) => {
@@ -154,8 +191,8 @@ export default function AnalyticsPage() {
                 </div>
             </div>
 
-            {/* Top Cards: CRM & Loyalty */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Top Cards: PWA & GA4 KPIs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card className="rounded-[2.5rem] border-none shadow-xl shadow-slate-200/50 bg-gradient-to-br from-rose-500 to-rose-600 text-white overflow-hidden relative group">
                     <Heart className="absolute -right-4 -bottom-4 w-32 h-32 opacity-10 group-hover:scale-110 transition-transform duration-500" />
                     <CardHeader className="pb-2">
@@ -180,19 +217,31 @@ export default function AnalyticsPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="rounded-[2.5rem] border-none shadow-xl shadow-slate-200/50 bg-gradient-to-br from-slate-800 to-slate-900 text-white overflow-hidden relative group">
+                <Card className="rounded-[2.5rem] border-none shadow-xl shadow-slate-200/50 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white overflow-hidden relative group">
                     <TrendingUp className="absolute -right-4 -bottom-4 w-32 h-32 opacity-10 group-hover:scale-110 transition-transform duration-500" />
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-xs font-black uppercase tracking-widest opacity-80">Conversión Global</CardTitle>
+                        <CardTitle className="text-xs font-black uppercase tracking-widest opacity-80">Ventas (Revenue)</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-4xl font-black mb-1">
+                            ${financial.total_revenue.toLocaleString('es-CL')}
+                        </div>
+                        <p className="text-xs font-bold opacity-70">Ingresos brutos por takeaway</p>
+                        <ComparisonBadge localVal={financial.total_revenue} platformVal={avgFinancial.total_revenue} />
+                    </CardContent>
+                </Card>
+
+                <Card className="rounded-[2.5rem] border-none shadow-xl shadow-slate-200/50 bg-gradient-to-br from-slate-800 to-slate-900 text-white overflow-hidden relative group">
+                    <MousePointer2 className="absolute -right-4 -bottom-4 w-32 h-32 opacity-10 group-hover:scale-110 transition-transform duration-500" />
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-xs font-black uppercase tracking-widest opacity-80">Sesiones PWA / GA4</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="text-5xl font-black mb-1">
-                            {getConversion(funnel.reservation_completes + funnel.takeaway_completes, funnel.home_views)}%
+                            {pwa.app_sessions}
                         </div>
-                        <p className="text-xs font-bold opacity-70">Rendimiento desde la primera visualización</p>
-                        <Badge variant="secondary" className="mt-2 rounded-lg font-bold text-[10px] py-0 h-5 border-none bg-white/20 text-white">
-                            Avg. Plataforma: {getConversion(avgFunnel.reservation_completes + avgFunnel.takeaway_completes, avgFunnel.home_views)}%
-                        </Badge>
+                        <p className="text-xs font-bold opacity-70">Visitas registradas</p>
+                        <ComparisonBadge localVal={pwa.app_sessions} platformVal={avgPwa.app_sessions} />
                     </CardContent>
                 </Card>
             </div>

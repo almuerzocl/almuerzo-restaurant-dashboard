@@ -6,7 +6,8 @@ import {
 } from "@/components/ui/table";
 import {
     getReservationsAction,
-    updateReservationStatusAction
+    updateReservationStatusAction,
+    trackAnalyticsEventAction
 } from "@/app/actions/dashboard-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,16 @@ export default function ReservationList({ restaurantId }: ReservationListProps) 
         const result = await updateReservationStatusAction(id, newStatus);
         if (result.success) {
             toast.success(`Reserva actualizada a ${newStatus}`);
+            
+            // Analytics tracking
+            if (restaurantId && profile?.id) {
+                if (newStatus === 'CONFIRMADA') {
+                    trackAnalyticsEventAction(restaurantId, 'reservation_confirm', profile.id);
+                } else if (newStatus === 'CHECK-IN CLIENTE') {
+                    trackAnalyticsEventAction(restaurantId, 'reservation_checkin', profile.id);
+                }
+            }
+
             fetchReservations();
         } else {
             toast.error("Error al actualizar estado");

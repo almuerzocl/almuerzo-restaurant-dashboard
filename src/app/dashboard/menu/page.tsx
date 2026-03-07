@@ -25,7 +25,8 @@ import {
     updateMenuItemAction,
     addMenuItemAction,
     deleteMenuItemAction,
-    sendDailyMenuAction
+    sendDailyMenuAction,
+    trackAnalyticsEventAction
 } from "@/app/actions/dashboard-actions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,10 @@ export default function MenuManagerPage() {
 
     useEffect(() => {
         fetchMenu();
-    }, [restaurantId]);
+        if (restaurantId && profile?.id) {
+            trackAnalyticsEventAction(restaurantId, 'view_menu', profile.id);
+        }
+    }, [restaurantId, profile?.id]);
 
     const handleToggle = async (itemId: string, field: string, value: boolean) => {
         const result = await updateMenuItemAction(itemId, { [field]: value });

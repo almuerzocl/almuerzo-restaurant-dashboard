@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { getTakeawayOrdersAction, updateTakeawayStatusAction } from "@/app/actions/dashboard-actions";
+import { getTakeawayOrdersAction, updateTakeawayStatusAction, trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 import { toast } from "sonner";
 import { CheckCircle2, ShoppingBag, XCircle, Clock, Utensils, Coins, Box } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,11 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
         const result = await updateTakeawayStatusAction(id, newStatus);
         if (result.success) {
             toast.success(`Pedido movido a ${newStatus}`);
+            
+            // Track takeaway confirmation (A Cocina)
+            if (restaurantId && profile?.id && newStatus === 'PREPARANDO') {
+                trackAnalyticsEventAction(restaurantId, 'takeaway_confirm', profile.id);
+            }
             // real-time handles refresh
         } else {
             toast.error("Error al actualizar estado");

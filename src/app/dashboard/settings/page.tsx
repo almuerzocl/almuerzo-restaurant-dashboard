@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 export default function SystemManagementPage() {
     const { profile } = useAuth();

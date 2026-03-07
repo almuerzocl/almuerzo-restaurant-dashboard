@@ -6,7 +6,8 @@ import {
 } from "@/components/ui/table";
 import {
     getTakeawayOrdersAction,
-    updateTakeawayStatusAction
+    updateTakeawayStatusAction,
+    trackAnalyticsEventAction
 } from "@/app/actions/dashboard-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,12 @@ export default function TakeawayOrderList({ restaurantId }: TakeawayOrderListPro
         const result = await updateTakeawayStatusAction(id, newStatus);
         if (result.success) {
             toast.success(`Pedido actualizado a ${newStatus}`);
+            
+            // Track takeaway confirmation (A Cocina)
+            if (restaurantId && profile?.id && newStatus === 'PREPARANDO') {
+                trackAnalyticsEventAction(restaurantId, 'takeaway_confirm', profile.id);
+            }
+
             fetchOrders();
         } else {
             toast.error("Error al actualizar estado");

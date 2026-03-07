@@ -21,7 +21,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { PlusCircle, Loader2, UserCheck, ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Mail, Gift } from "lucide-react";
-import { createManualReservationAction, searchProfileByEmailAction, checkAdvancedAvailabilityAction } from "@/app/actions/dashboard-actions";
+import { createManualReservationAction, searchProfileByEmailAction, checkAdvancedAvailabilityAction, trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -128,6 +128,10 @@ export default function ManualReservationDialog({ restaurantId }: ManualReservat
 
         if (result.success) {
             toast.success(existingProfile ? "Reserva creada" : "Reserva creada e invitación enviada");
+            
+            // Track 'reservation_start' (as creation is the start of the process)
+            trackAnalyticsEventAction(restaurantId, 'reservation_start', existingProfile?.id);
+
             setOpen(false);
             // Full Reset
             setCustomerName("");

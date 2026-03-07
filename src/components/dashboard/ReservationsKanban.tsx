@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { getReservationsAction, updateReservationStatusAction } from "@/app/actions/dashboard-actions";
+import { getReservationsAction, updateReservationStatusAction, trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 import { Reservation } from "@/types";
 import { toast } from "sonner";
 import { CheckCircle2, UserCheck, XCircle, Clock, Users, Ban } from "lucide-react";
@@ -69,6 +69,15 @@ export default function ReservationsKanban({ restaurantId }: ReservationsKanbanP
         const result = await updateReservationStatusAction(id, newStatus);
         if (result.success) {
             toast.success(`Reserva movida a ${newStatus}`);
+            
+            // Analytics tracking based on new status
+            if (restaurantId && profile?.id) {
+                if (newStatus === 'CONFIRMADA') {
+                    trackAnalyticsEventAction(restaurantId, 'reservation_confirm', profile.id);
+                } else if (newStatus === 'CHECK-IN CLIENTE') {
+                    trackAnalyticsEventAction(restaurantId, 'reservation_checkin', profile.id);
+                }
+            }
             // real-time will handle the refresh
         } else {
             toast.error("Error al actualizar estado");

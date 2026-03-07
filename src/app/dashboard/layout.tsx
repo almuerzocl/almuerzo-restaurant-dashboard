@@ -12,7 +12,8 @@ import {
     User,
     Menu,
     LogOut,
-    Bell
+    Bell,
+    TicketPercent
 } from "lucide-react";
 import { useNotifications } from "@/context/NotificationContext";
 import Link from "next/link";
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 
 interface DashboardLayoutProps {
     children: ReactNode;
@@ -52,8 +54,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 if (data) setRestaurantName(data.name);
             };
             fetchRestaurant();
+
+            trackAnalyticsEventAction(profile.restaurant_id, 'view_home', profile.id);
         }
-    }, [profile?.restaurant_id]);
+    }, [profile?.restaurant_id, profile?.id]);
 
     const renderNavLinks = () => {
         return (
@@ -101,6 +105,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         >
                             <UtensilsCrossed className="w-5 h-5" />
                             Gestor de Menú
+                        </Link>
+
+                        <Link
+                            href="/dashboard/promotions"
+                            className={cn(
+                                "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all",
+                                pathname.includes("/promotions")
+                                    ? "bg-rose-500 text-white font-bold shadow-md"
+                                    : "text-muted-foreground hover:bg-muted font-medium hover:text-rose-500 transition-all"
+                            )}
+                        >
+                            <TicketPercent className="w-5 h-5" />
+                            Marketing y Descuentos
                         </Link>
 
                         <Link
