@@ -18,7 +18,7 @@ import { trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 export default function ReservationsPage() {
     const { profile } = useAuth();
     const role = profile?.role?.toUpperCase();
-    const canViewReservations = role && ['ADMIN', 'OPERATIONS_MANAGER', 'RESERVATION_MANAGER', 'OWNER'].includes(role);
+    const canViewReservations = role && ['ADMIN', 'OPERATIONS_MANAGER', 'RESERVATION_MANAGER', 'OWNER', 'SUPER_ADMIN', 'RESTAURANT_ADMIN'].includes(role);
     if (!canViewReservations) {
         return (
             <div className="flex items-center justify-center h-full">

@@ -504,7 +504,7 @@ export async function getReservationsAction(restaurantId: string, role: string) 
         if (!allowedRoles.includes(roleUpper)) {
             return { success: false, error: 'Access denied: insufficient permissions for reservations.' };
         }
-        const supabase = await createClient();
+        const supabase = createAdminClient();
         const { data, error } = await supabase
             .from("reservations")
             .select("*")
@@ -614,7 +614,7 @@ export async function getTakeawayOrdersAction(restaurantId: string, role: string
         if (!allowedRoles.includes(roleUpper)) {
             return { success: false, error: 'Access denied: insufficient permissions for takeaway.' };
         }
-        const supabase = await createClient();
+        const supabase = createAdminClient();
         const { data, error } = await supabase
             .from("takeaway_orders")
             .select("*")

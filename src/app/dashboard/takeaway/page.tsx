@@ -19,7 +19,7 @@ import { trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 export default function TakeawayPage() {
     const { profile } = useAuth();
     const role = profile?.role?.toUpperCase();
-    const canViewTakeaway = role && ['ADMIN', 'OPERATIONS_MANAGER', 'TAKEAWAY_MANAGER', 'OWNER'].includes(role);
+    const canViewTakeaway = role && ['ADMIN', 'OPERATIONS_MANAGER', 'TAKEAWAY_MANAGER', 'OWNER', 'SUPER_ADMIN', 'RESTAURANT_ADMIN'].includes(role);
     if (!canViewTakeaway) {
         return (
             <div className="flex items-center justify-center h-full">
