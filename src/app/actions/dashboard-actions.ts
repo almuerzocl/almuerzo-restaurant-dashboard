@@ -398,7 +398,7 @@ export async function updateRestaurantSettingsAction(restaurantId: string, updat
 export async function getMenuItemsAction(restaurantId: string, role: string) {
     try {
         const roleUpper = role?.toUpperCase();
-        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'MENU_MANAGER', 'OWNER', 'RESTAURANT_ADMIN'];
+        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'MENU_MANAGER', 'OWNER', 'RESTAURANT_ADMIN', 'SUPER_ADMIN'];
         if (!allowedRoles.includes(roleUpper)) {
             return { success: false, error: 'Access denied: insufficient permissions for menu management.' };
         }
@@ -500,7 +500,7 @@ export async function getPaymentHistoryAction(restaurantId: string) {
 export async function getReservationsAction(restaurantId: string, role: string) {
     try {
         const roleUpper = role?.toUpperCase();
-        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'RESERVATION_MANAGER', 'OWNER', 'RESTAURANT_ADMIN'];
+        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'RESERVATION_MANAGER', 'OWNER', 'RESTAURANT_ADMIN', 'SUPER_ADMIN'];
         if (!allowedRoles.includes(roleUpper)) {
             return { success: false, error: 'Access denied: insufficient permissions for reservations.' };
         }
@@ -610,7 +610,7 @@ export async function updateReservationStatusAction(reservationId: string, statu
 export async function getTakeawayOrdersAction(restaurantId: string, role: string) {
     try {
         const roleUpper = role?.toUpperCase();
-        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'TAKEAWAY_MANAGER', 'OWNER', 'RESTAURANT_ADMIN'];
+        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'TAKEAWAY_MANAGER', 'OWNER', 'RESTAURANT_ADMIN', 'SUPER_ADMIN'];
         if (!allowedRoles.includes(roleUpper)) {
             return { success: false, error: 'Access denied: insufficient permissions for takeaway.' };
         }
