@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TakeawayOrder } from "@/types";
 import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 interface TakeawayOrderListProps {
     restaurantId: string | undefined;
@@ -43,7 +44,39 @@ export default function TakeawayOrderList({ restaurantId }: TakeawayOrderListPro
     };
 
     useEffect(() => {
+        if (!restaurantId) return;
+
+        // Initial fetch
         fetchOrders();
+
+        // Realtime Subscription
+        const channel = supabase
+            .channel(`takeaway-list-${restaurantId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'takeaway_orders',
+                    filter: `restaurant_id=eq.${restaurantId}`
+                },
+                (payload: any) => {
+                    console.log('Realtime takeaway list update:', payload);
+                    fetchOrders();
+
+                    if (payload.eventType === 'INSERT') {
+                        toast.success("¡Nuevo pedido takeaway!", {
+                            icon: '🥡',
+                            duration: 5000
+                        });
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [restaurantId]);
 
     const handleStatusUpdate = async (id: string, newStatus: string) => {

@@ -45,7 +45,7 @@ export default function ReservationsKanban({ restaurantId }: ReservationsKanbanP
                     table: 'reservations',
                     filter: `restaurant_id=eq.${restaurantId}`
                 },
-                (payload) => {
+                (payload: any) => {
                     console.log('Realtime update received:', payload);
                     fetchReservations();
 

@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Reservation } from "@/types";
 import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 interface ReservationListProps {
     restaurantId: string | undefined;
@@ -43,7 +44,40 @@ export default function ReservationList({ restaurantId }: ReservationListProps) 
     };
 
     useEffect(() => {
+        if (!restaurantId) return;
+
+        // Initial fetch
         fetchReservations();
+
+        // Realtime Subscription
+        const channel = supabase
+            .channel(`reservations-list-${restaurantId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'reservations',
+                    filter: `restaurant_id=eq.${restaurantId}`
+                },
+                (payload: any) => {
+                    console.log('Realtime reservation list update received:', payload);
+                    fetchReservations();
+
+                    // Show specific toast based on event
+                    if (payload.eventType === 'INSERT') {
+                        toast.success("¡Nueva reserva recibida!", {
+                            icon: '🔔',
+                            duration: 5000
+                        });
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [restaurantId]);
 
     const handleStatusUpdate = async (id: string, newStatus: string) => {

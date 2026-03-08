@@ -44,7 +44,7 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
                     table: 'takeaway_orders',
                     filter: `restaurant_id=eq.${restaurantId}`
                 },
-                (payload) => {
+                (payload: any) => {
                     console.log('Realtime order update:', payload);
                     fetchOrders();
 
