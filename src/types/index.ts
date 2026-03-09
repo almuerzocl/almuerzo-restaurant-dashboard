@@ -12,7 +12,7 @@ export interface Reservation {
     restaurant_id: string;
     date_time: string;
     party_size: number;
-    status: 'CREADA' | 'PENDIENTE' | 'CONFIRMADA' | 'CHECK-IN CLIENTE' | 'COMPLETADA' | 'CANCELADA' | 'RECHAZADA' | 'NO_SHOW';
+    status: 'CREADA' | 'PENDIENTE' | 'CONFIRMADA' | 'CHECK-IN CLIENTE' | 'COMPLETADA' | 'CANCELADA' | 'RECHAZADA' | 'NO SHOW';
     special_requests?: string;
     guest_data?: any;
     unique_code?: string;
@@ -25,8 +25,13 @@ export interface TakeawayOrder {
     restaurant_id: string;
     customer_name: string;
     customer_phone: string;
-    items: any[];
+    items: any[] | string;
     total_amount: number;
-    status: 'PENDIENTE' | 'RECHAZADA' | 'PREPARANDO' | 'LISTO' | 'COMPLETADO' | 'CANCELADO' | 'NO_RETIRADO';
+    status: 'CREADA' | 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | 'PREPARANDO' | 'LISTO' | 'ENTREGADO' | 'CANCELADO' | 'NO SHOW' | 'COMPLETADO';
     created_at: string;
+    ready_at?: string;
+    approved_at?: string;
+    metadata?: {
+        pickup_time?: string;
+    };
 }

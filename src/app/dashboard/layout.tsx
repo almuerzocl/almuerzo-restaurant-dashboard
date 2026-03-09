@@ -107,18 +107,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                             Gestor de Menú
                         </Link>
 
-                        <Link
-                            href="/dashboard/promotions"
-                            className={cn(
-                                "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all",
-                                pathname.includes("/promotions")
-                                    ? "bg-rose-500 text-white font-bold shadow-md"
-                                    : "text-muted-foreground hover:bg-muted font-medium hover:text-rose-500 transition-all"
-                            )}
-                        >
-                            <TicketPercent className="w-5 h-5" />
-                            Marketing y Descuentos
-                        </Link>
 
                         <Link
                             href="/dashboard/settings"

@@ -338,13 +338,25 @@ export default function MenuManagerPage() {
                                         <td className="p-8">
                                             <div className="flex items-center gap-5">
                                                 <div className="relative">
-                                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-bold ${item.is_available ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
-                                                        {item.name[0]}
-                                                    </div>
-                                                    <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-4 border-white ${item.is_available ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <div className="font-black text-slate-800 text-lg uppercase tracking-tight leading-none">{item.name}</div>
+                                                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-bold ${item.is_available && (!item.stock_managed || item.current_stock > 0) ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                                                         {item.name[0]}
+                                                     </div>
+                                                     <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-4 border-white ${
+                                                         !item.is_available ? 'bg-rose-500' : 
+                                                         (item.stock_managed && item.current_stock <= 0) ? 'bg-rose-500 animate-pulse' :
+                                                         (item.stock_managed && item.current_stock < 5) ? 'bg-amber-500' :
+                                                         'bg-emerald-500'
+                                                     }`} />
+                                                 </div>
+                                                 <div className="space-y-1">
+                                                     <div className="flex items-center gap-2">
+                                                         <div className={`font-black text-slate-800 text-lg uppercase tracking-tight leading-none ${(!item.is_available || (item.stock_managed && item.current_stock <= 0)) ? 'opacity-40' : ''}`}>
+                                                             {item.name}
+                                                         </div>
+                                                         {item.stock_managed && item.current_stock <= 0 && (
+                                                             <Badge className="bg-rose-100 text-rose-600 border-none font-black text-[8px] px-1.5 py-0">SIN STOCK</Badge>
+                                                         )}
+                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <Badge variant="outline" className="text-[8px] font-black uppercase border-slate-200 text-slate-400 px-1.5 py-0">#{item.id.substring(0, 5)}</Badge>
                                                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Categoría: {item.category || 'General'}</span>

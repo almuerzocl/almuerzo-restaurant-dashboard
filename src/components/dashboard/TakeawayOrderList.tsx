@@ -79,8 +79,8 @@ export default function TakeawayOrderList({ restaurantId }: TakeawayOrderListPro
         };
     }, [restaurantId]);
 
-    const handleStatusUpdate = async (id: string, newStatus: string) => {
-        const result = await updateTakeawayStatusAction(id, newStatus);
+    const handleStatusUpdate = async (id: string, newStatus: string, reason?: string) => {
+        const result = await updateTakeawayStatusAction(id, newStatus, reason);
         if (result.success) {
             toast.success(`Pedido actualizado a ${newStatus}`);
             
@@ -91,23 +91,35 @@ export default function TakeawayOrderList({ restaurantId }: TakeawayOrderListPro
 
             fetchOrders();
         } else {
-            toast.error("Error al actualizar estado");
+            toast.error("Error al actualizar estado: " + result.error);
         }
+    };
+
+    const handleReject = async (id: string) => {
+        const reason = window.prompt("Justifique el rechazo (Ej: Sin stock, local cerrado, mucha demora):");
+        if (reason) handleStatusUpdate(id, 'RECHAZADA', reason);
     };
 
     const getStatusBadge = (status: string) => {
         switch (status) {
-            case 'PREPARANDO':
-                return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">En Cocina</Badge>;
-            case 'LISTO':
-                return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">Listo para retiro</Badge>;
-            case 'COMPLETADO':
-                return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">Entregado</Badge>;
             case 'PENDIENTE':
-                return <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">Nuevo</Badge>;
+            case 'CREADA':
+                return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">PENDIENTE</Badge>;
+            case 'APROBADA':
+                return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">APROBADA</Badge>;
+            case 'PREPARANDO':
+                return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">PREPARANDO</Badge>;
+            case 'LISTO':
+                return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">LISTO</Badge>;
+            case 'ENTREGADO':
+            case 'COMPLETADO':
+                return <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">ENTREGADO</Badge>;
             case 'RECHAZADA':
+                return <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">RECHAZADA</Badge>;
             case 'CANCELADO':
-                return <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">Cancelado</Badge>;
+                return <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">CANCELADO</Badge>;
+            case 'NO SHOW':
+                return <Badge className="bg-slate-900 text-white hover:bg-slate-900 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">NO SHOW</Badge>;
             default:
                 return <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100 border-none uppercase text-[10px] font-black tracking-widest px-3 py-1">{status}</Badge>;
         }
@@ -164,37 +176,58 @@ export default function TakeawayOrderList({ restaurantId }: TakeawayOrderListPro
                             </TableCell>
                             <TableCell className="px-6">
                                 <div className="flex items-center justify-end gap-2">
-                                    {order.status === 'PENDIENTE' && (
+                                    {(order.status === 'PENDIENTE' || order.status === 'CREADA') && (
+                                        <>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="rounded-xl border-rose-100 text-rose-500 hover:bg-rose-50 font-black uppercase text-[9px] tracking-widest px-4 h-10"
+                                                onClick={() => handleReject(order.id)}
+                                            >
+                                                Rechazar
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase text-[9px] tracking-widest px-4 h-10"
+                                                onClick={() => handleStatusUpdate(order.id, 'APROBADA')}
+                                            >
+                                                Aprobar
+                                            </Button>
+                                        </>
+                                    )}
+                                    {order.status === 'APROBADA' && (
                                         <Button
                                             size="sm"
-                                            variant="outline"
-                                            className="rounded-xl border-amber-200 text-amber-600 hover:bg-amber-50 font-black uppercase text-[9px] tracking-widest px-4 h-10 gap-2"
+                                            className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black uppercase text-[9px] tracking-widest px-4 h-10"
                                             onClick={() => handleStatusUpdate(order.id, 'PREPARANDO')}
                                         >
-                                            <ChefHat className="w-4 h-4" /> Preparar
+                                            <ChefHat className="w-4 h-4 mr-2" /> Preparar
                                         </Button>
                                     )}
                                     {order.status === 'PREPARANDO' && (
                                         <Button
                                             size="sm"
-                                            variant="outline"
-                                            className="rounded-xl border-blue-200 text-blue-600 hover:bg-blue-50 font-black uppercase text-[9px] tracking-widest px-4 h-10 gap-2"
+                                            className="rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black uppercase text-[9px] tracking-widest px-4 h-10"
                                             onClick={() => handleStatusUpdate(order.id, 'LISTO')}
                                         >
-                                            <Package className="w-4 h-4" /> Listo
+                                            <Package className="w-4 h-4 mr-2" /> Listo
                                         </Button>
                                     )}
                                     {order.status === 'LISTO' && (
                                         <Button
                                             size="sm"
-                                            variant="outline"
-                                            className="rounded-xl border-emerald-200 text-emerald-600 hover:bg-emerald-50 font-black uppercase text-[9px] tracking-widest px-4 h-10 gap-2"
-                                            onClick={() => handleStatusUpdate(order.id, 'COMPLETADO')}
+                                            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase text-[9px] tracking-widest px-4 h-10"
+                                            onClick={() => handleStatusUpdate(order.id, 'ENTREGADO')}
                                         >
-                                            <CheckCircle className="w-4 h-4" /> Entregar
+                                            Entregar
                                         </Button>
                                     )}
-                                    <Button size="sm" variant="ghost" className="rounded-xl h-10 w-10 p-0">
+                                    <Button 
+                                        size="sm" 
+                                        variant="ghost" 
+                                        className="rounded-xl h-10 w-10 p-0"
+                                        onClick={() => window.open(`https://ticket2.almuerzo.cl/v/${order.id}`, '_blank')}
+                                    >
                                         <ExternalLink className="w-4 h-4 text-slate-400" />
                                     </Button>
                                 </div>

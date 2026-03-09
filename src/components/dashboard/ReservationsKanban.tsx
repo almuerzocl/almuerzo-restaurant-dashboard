@@ -152,7 +152,7 @@ export default function ReservationsKanban({ restaurantId }: ReservationsKanbanP
                                         return (
                                             <div
                                                 key={res.id}
-                                                onClick={() => window.open(`https://v5.almuerzo.cl/ticket/${res.unique_code}`, '_blank')}
+                                                onClick={() => window.open(`https://ticket2.almuerzo.cl/v/${res.unique_code}`, '_blank')}
                                                 className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200 flex flex-col gap-4 relative overflow-hidden group hover:shadow-md cursor-pointer transition-all"
                                             >
                                                 {/* Card Header */}

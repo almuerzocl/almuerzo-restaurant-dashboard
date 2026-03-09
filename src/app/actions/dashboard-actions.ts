@@ -150,7 +150,7 @@ export async function createManualReservationAction(params: {
 
         if (error) throw error;
 
-        const publicTicketUrl = `https://v5.almuerzo.cl/ticket/${code}`;
+        const publicTicketUrl = `https://ticket2.almuerzo.cl/v/${code}`;
 
         // Send Email Proof / Invitation
         if (params.customerEmail) {
@@ -200,7 +200,7 @@ export async function createManualReservationAction(params: {
                             <div style="background: #10b981; color: white; padding: 20px; border-radius: 12px; margin-top: 30px;">
                                 <h3 style="margin: 0 0 10px 0;">🚀 Únete a Almuerzo.cl</h3>
                                 <p style="margin: 0 0 15px 0; font-size: 14px; opacity: 0.9;">¡No vuelvas a dictar tus datos! Crea tu perfil en segundos y empieza a acumular reputación para reservas priorizadas y clubes de descuento.</p>
-                                <a href="https://v5.almuerzo.cl/onboarding" style="background: white; color: #10b981; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">
+                                <a href="https://ticket2.almuerzo.cl/onboarding" style="background: white; color: #10b981; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">
                                     Aceptar Invitación
                                 </a>
                             </div>
@@ -381,7 +381,7 @@ export async function getRestaurantSettingsAction(restaurantId: string) {
 
 export async function updateRestaurantSettingsAction(restaurantId: string, updates: any) {
     try {
-        const supabase = await createClient();
+        const supabase = createAdminClient();
         const { error } = await supabase
             .from("restaurants")
             .update(updates)
@@ -521,7 +521,7 @@ export async function getReservationsAction(restaurantId: string, role: string) 
 
 export async function updateReservationStatusAction(reservationId: string, status: string) {
     try {
-        const supabase = await createClient();
+        const supabase = createAdminClient();
 
         // 1. Update the status
         const { data: res, error: updateError } = await supabase
@@ -592,12 +592,37 @@ export async function updateReservationStatusAction(reservationId: string, statu
                             <div style="margin-top: 40px; padding-top: 25px; border-top: 1px solid #f1f5f9;">
                                 <div style="font-size: 11px; font-weight: bold; color: #1e293b;">${restaurantName}</div>
                                 <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">${restRes.data?.address?.street || ''} ${restRes.data?.address?.number || ''}</div>
-                                <a href="https://v5.almuerzo.cl" style="display: inline-block; margin-top: 20px; color: #10b981; font-weight: 900; text-decoration: none; font-size: 12px; letter-spacing: 0.5px;">ALMUERZO.CL</a>
+                                 <a href="https://ticket2.almuerzo.cl" style="display: inline-block; margin-top: 20px; color: #10b981; font-weight: 900; text-decoration: none; font-size: 12px; letter-spacing: 0.5px;">ALMUERZO.CL</a>
                             </div>
                         </div>
                     `
                 });
             }
+        }
+
+        // Also add database notification for the customer
+        if (res?.organizer_id) {
+            const { data: restData } = await supabase
+                .from("restaurants")
+                .select("name")
+                .eq("id", res.restaurant_id)
+                .single();
+                
+            const restaurantName = restData?.name || 'El Restaurante';
+            const notificationTitle = `Reserva ${status.toLowerCase()}`;
+            const notificationMsg = `Tu reserva en ${restaurantName} ahora está ${status.toLowerCase()}.`;
+            
+            await supabase
+                .from("notifications")
+                .insert({
+                    user_id: res.organizer_id,
+                    restaurant_id: res.restaurant_id,
+                    title: notificationTitle,
+                    message: notificationMsg,
+                    type: 'RESERVATION',
+                    related_id: reservationId,
+                    is_read: false
+                });
         }
 
         return { success: true };
@@ -629,23 +654,102 @@ export async function getTakeawayOrdersAction(restaurantId: string, role: string
     }
 }
 
-export async function updateTakeawayStatusAction(orderId: string, status: string) {
+export async function updateTakeawayStatusAction(orderId: string, status: string, reason?: string) {
     try {
-        const supabase = await createClient();
+        const supabase = createAdminClient();
+        
+        // 1. Fetch current order to validate transition
+        const { data: currentOrder, error: fetchError } = await supabase
+            .from("takeaway_orders")
+            .select("*")
+            .eq("id", orderId)
+            .single();
+            
+        if (fetchError || !currentOrder) throw new Error("Order not found");
 
-        // 1. Update the status
+        const items = typeof currentOrder.items === 'string' ? JSON.parse(currentOrder.items) : (currentOrder.items || []);
+
+        // 2. STRICT LIFECYCLE VALIDATION
+        const currentStatus = currentOrder.status;
+        
+        // Rule: Only PENDIENTE can become APROBADA or RECHAZADA
+        if ((status === 'APROBADA' || status === 'RECHAZADA') && currentStatus !== 'PENDIENTE' && currentStatus !== 'CREADA') {
+            throw new Error(`Invalid transition: Cannot move from ${currentStatus} to ${status}`);
+        }
+        
+        // Rule: Only APROBADA can become PREPARANDO
+        if (status === 'PREPARANDO' && currentStatus !== 'APROBADA') {
+            throw new Error(`Invalid transition: Only APROBADA orders can start preparation.`);
+        }
+        
+        // Rule: Only PREPARANDO can become LISTO
+        if (status === 'LISTO' && currentStatus !== 'PREPARANDO') {
+            throw new Error(`Invalid transition: Only PREPARANDO orders can be marked as LISTO.`);
+        }
+
+        // Rule: NO SHOW can only happen after LISTO
+        if (status === 'NO SHOW' && currentStatus !== 'LISTO') {
+             throw new Error("Invalid transition: Only LISTO orders can be marked as NO SHOW.");
+        }
+
+        // 2.5 INVENTORY CONTROL: Validate and Deduct stock on APROBADA
+        if (status === 'APROBADA') {
+            // First check if all items have enough stock (if managed)
+            for (const item of items) {
+                const itemId = item.id || item.menu_item_id;
+                if (itemId) {
+                    const { data: menuItem } = await supabase
+                        .from('menu_items')
+                        .select('name, stock_managed, current_stock')
+                        .eq('id', itemId)
+                        .single();
+                        
+                    if (menuItem?.stock_managed) {
+                        const quantity = Number(item.quantity) || 1;
+                        if ((menuItem.current_stock || 0) < quantity) {
+                            throw new Error(`SIN STOCK: ${menuItem.name} (Quedan: ${menuItem.current_stock})`);
+                        }
+                    }
+                }
+            }
+            // Note: Deduction is now handled by the database trigger tr_handle_takeaway_inventory 
+            // defined in V5_ARCHITECTURE_FINAL.sql to ensure data integrity.
+        }
+
+        // 3. Update the order
+        // Use metadata to store timestamps and reasons to be resilient to schema changes
+        const existingMetadata = typeof currentOrder.metadata === 'string' 
+            ? JSON.parse(currentOrder.metadata) 
+            : (currentOrder.metadata || {});
+
+        const updatedMetadata = { ...existingMetadata };
+        
+        if (reason && status === 'RECHAZADA') {
+            updatedMetadata.rejection_reason = reason;
+        }
+        
+        if (status === 'LISTO') updatedMetadata.ready_at = new Date().toISOString();
+        if (status === 'APROBADA') updatedMetadata.approved_at = new Date().toISOString();
+
+        const updatePayload: any = { 
+            status,
+            metadata: updatedMetadata
+        };
+
         const { data: order, error: updateError } = await supabase
             .from("takeaway_orders")
-            .update({ status })
+            .update(updatePayload)
             .eq("id", orderId)
-            .select("user_id, restaurant_id, customer_name, total_amount")
+            .select("user_id, restaurant_id, customer_name, total_amount, metadata")
             .single();
 
-        if (updateError) throw updateError;
+        if (updateError) {
+            console.error("Supabase Update Error:", updateError);
+            throw updateError;
+        }
 
-        // 2. If status is LISTO, send email
-        if (status === 'LISTO' && order?.user_id) {
-            // Fetch User Email and Restaurant Name
+        // 4. NOTIFICATIONS (Email & PWA)
+        if (order?.user_id) {
             const [userRes, restRes] = await Promise.all([
                 supabase.from("profiles").select("email, first_name").eq("id", order.user_id).single(),
                 supabase.from("restaurants").select("name").eq("id", order.restaurant_id).single()
@@ -655,30 +759,49 @@ export async function updateTakeawayStatusAction(orderId: string, status: string
             const userName = userRes.data?.first_name || order.customer_name || 'Cliente';
             const restaurantName = restRes.data?.name || 'El Restaurante';
 
-            if (userEmail) {
+            // PWA Notification logic
+            const statusMessages: any = {
+                'APROBADA': '¡Tu pedido ha sido aprobado! 🍱',
+                'PREPARANDO': 'Tu pedido está en cocina 👨‍🍳',
+                'LISTO': '¡Pedido listo para retirar! 🍱 Preséntate en el local.',
+                'RECHAZADA': `Lo sentimos, el pedido fue rechazado. ${reason ? `Motivo: ${reason}` : ''} ❌`,
+                'NO SHOW': 'Tu pedido no fue retirado a tiempo. ⚠️'
+            };
+
+            if (statusMessages[status]) {
+                await supabase.from('notifications').insert({
+                    user_id: order.user_id,
+                    restaurant_id: order.restaurant_id,
+                    title: restaurantName,
+                    message: statusMessages[status],
+                    type: 'TAKEAWAY',
+                    related_id: orderId,
+                    is_read: false
+                });
+            }
+
+            // EMAIL on LISTO
+            if (status === 'LISTO' && userEmail) {
                 await sendEmailAction({
                     to: userEmail,
                     subject: `🍱 ¡Tu pedido en ${restaurantName} está listo!`,
-                    text: `Hola ${userName},\n\nTe informamos que tu pedido por $${order.total_amount.toLocaleString('es-CL')} ya está listo para ser retirado en ${restaurantName}.\n\n¡Te esperamos!\n\nAlmuerzo.cl`,
+                    text: `Hola ${userName},\n\nTu pedido en ${restaurantName} ya está listo para ser retirado.\n\n¡Te esperamos!\n\nAlmuerzo.cl`,
                     html: `
-                        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 20px; text-align: center;">
-                            <div style="font-size: 50px; margin-bottom: 10px;">🍱</div>
-                            <h2 style="color: #1e293b; font-weight: 900; margin-bottom: 5px;">¡Vente por tu Pedido!</h2>
-                            <p style="color: #64748b; font-weight: 500; margin-top: 0;">Tu orden en <strong>${restaurantName}</strong> ya está lista.</p>
-                            
-                            <div style="background: #f8fafc; padding: 20px; border-radius: 15px; margin: 25px 0;">
-                                <div style="font-size: 12px; text-transform: uppercase; font-weight: 800; color: #94a3b8; letter-spacing: 1px; margin-bottom: 5px;">Total a Pagar</div>
-                                <div style="font-size: 32px; font-weight: 900; color: #1e293b;">$${order.total_amount.toLocaleString('es-CL')}</div>
-                            </div>
-                            
-                            <p style="font-size: 14px; color: #475569; line-height: 1.6;">
-                                Puedes pasar por el local a retirar tu comida en este momento. <br/>
-                                Presenta tu nombre o el ID de pedido: <strong>#${orderId.substring(0, 8).toUpperCase()}</strong>
+                        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 25px; border: 1px solid #f1f5f9; border-radius: 24px; background: white; text-align: center;">
+                            <div style="font-size: 52px; margin-bottom: 15px;">🍱</div>
+                            <h2 style="color: #6366f1; font-weight: 900; margin-bottom: 5px; font-size: 28px;">¡Listo para Retirar!</h2>
+                            <p style="color: #64748b; font-weight: 500; margin-top: 0; font-size: 16px;">
+                                Ya puedes pasar por <strong>${restaurantName}</strong> a buscar tu orden.
                             </p>
                             
-                            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
-                                <p style="font-size: 12px; color: #94a3b8;">Gracias por preferir Almuerzo.cl</p>
+                            <div style="background: #f8fafc; padding: 25px; border-radius: 20px; margin: 30px 0; text-align: left;">
+                                <div style="font-size: 10px; text-transform: uppercase; font-weight: 800; color: #94a3b8; letter-spacing: 1.5px; margin-bottom: 4px;">TICKET ID</div>
+                                <div style="font-size: 20px; font-weight: 900; color: #1e293b; font-family: monospace;">#${orderId.substring(0, 8).toUpperCase()}</div>
                             </div>
+                            
+                            <p style="font-size: 14px; color: #64748b; line-height: 1.6;">
+                                Muestra este mensaje o indica tu nombre al llegar al restaurante.
+                            </p>
                         </div>
                     `
                 });
@@ -752,7 +875,7 @@ export async function sendDailyMenuAction(restaurantId: string) {
                         </div>
                         <div style="padding: 30px; text-align: center; background: #f8fafc;">
                             <p style="margin-bottom: 20px; font-size: 14px; color: #64748b; font-weight: 500;">¿Te tienta algo? Haz tu reserva o pide para retirar.</p>
-                            <a href="https://v5.almuerzo.cl/restaurant/${restaurantId}" style="background: #10b981; color: white; padding: 14px 28px; border-radius: 14px; text-decoration: none; font-weight: 800; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
+                            <a href="https://ticket2.almuerzo.cl/restaurant/${restaurantId}" style="background: #10b981; color: white; padding: 14px 28px; border-radius: 14px; text-decoration: none; font-weight: 800; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
                                 Ver Detalles en Almuerzo.cl
                             </a>
                         </div>
