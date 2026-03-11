@@ -39,6 +39,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     useEffect(() => {
         if (!profile?.id) return;
+        const restaurantId = profile.restaurant_id;
 
         // Initial fetch
         const fetchNotifications = async () => {
@@ -57,7 +58,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
         fetchNotifications();
 
-        // Realtime subscription
+        // Channel 1: Realtime subscription on notifications table
         const channel = supabase
             .channel(`user-notifications-${profile.id}`)
             .on(
@@ -99,10 +100,78 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             )
             .subscribe();
 
+        // Channel 2: Direct subscription to takeaway_orders INSERT for instant blocking notification
+        let ordersChannel: any = null;
+        if (restaurantId) {
+            ordersChannel = supabase
+                .channel(`takeaway-orders-alert-${restaurantId}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'takeaway_orders',
+                        filter: `restaurant_id=eq.${restaurantId}`
+                    },
+                    (payload: any) => {
+                        const order = payload.new;
+                        const customerName = order.customer_name || 'Cliente';
+                        const itemCount = Array.isArray(order.items) ? order.items.reduce((acc: number, i: any) => acc + (Number(i.quantity) || 1), 0) : '?';
+
+                        // Show blocking notification immediately
+                        setCriticalNotification({
+                            isOpen: true,
+                            title: '🥡 ¡Nuevo Pedido Para Llevar!',
+                            message: `${customerName} ha realizado un pedido de ${itemCount} items por $${Number(order.total_amount || 0).toLocaleString('es-CL')}`,
+                            type: 'success'
+                        });
+
+                        // Sound
+                        try {
+                            const audio = new Audio('/notification.mp3');
+                            audio.play().catch(() => { });
+                        } catch (e) { }
+                    }
+                )
+                .subscribe();
+        }
+
+        // Channel 3: Signal channel (Direct Broadcast from PWA for immediate UI update)
+        let signalChannel: any = null;
+        if (restaurantId) {
+            signalChannel = supabase
+                .channel(`restaurant-signals-${restaurantId}`)
+                .on(
+                    'broadcast',
+                    { event: 'new_notification' },
+                    (payload: any) => {
+                        console.log('📡 Signal received from PWA:', payload);
+                        const { title, message, type } = payload.payload;
+
+                        // Show blocking notification immediately
+                        setCriticalNotification({
+                            isOpen: true,
+                            title: title || '🥡 ¡Nueva Notificación!',
+                            message: message || 'Se ha recibido una actualización en tiempo real.',
+                            type: 'success'
+                        });
+
+                        // Sound
+                        try {
+                            const audio = new Audio('/notification.mp3');
+                            audio.play().catch(() => { });
+                        } catch (e) { }
+                    }
+                )
+                .subscribe();
+        }
+
         return () => {
             supabase.removeChannel(channel);
+            if (ordersChannel) supabase.removeChannel(ordersChannel);
+            if (signalChannel) supabase.removeChannel(signalChannel);
         };
-    }, [profile?.id]);
+    }, [profile?.id, profile?.restaurant_id]);
 
     const markAsRead = async (id: string) => {
         const { error } = await supabase

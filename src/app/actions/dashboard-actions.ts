@@ -421,21 +421,51 @@ export async function getRestaurantSettingsAction(restaurantId: string) {
 
 export async function updateRestaurantSettingsAction(restaurantId: string, updates: any) {
     try {
-        // Verify caller is admin of this restaurant
+        console.log(`[Settings] Attempting update for restaurant ${restaurantId}`);
         const supabase = await createClient();
+        
+        // 1. Get User
         const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError || !user) throw new Error("UNAUTHORIZED: Inicie sesión para continuar.");
+        if (authError || !user) {
+            console.error("[Settings] Auth error or no user:", authError);
+            throw new Error(`UNAUTHORIZED: ${authError?.message || 'No se encontró sesión activa.'} Por favor, cierre sesión e inicie nuevamente.`);
+        }
 
-        const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-        if (!profile || !isAdmin(profile)) throw new Error("FORBIDDEN: Permisos insuficientes.");
-
+        // 2. Get Profile (using admin client to ensure we find it regardless of RLS)
         const adminClient = createAdminClient();
-        const { error } = await adminClient
+        const { data: profile, error: profileError } = await adminClient
+            .from("profiles")
+            .select("*")
+            .eq("id", user.id)
+            .single();
+
+        if (profileError || !profile) {
+            console.error("[Settings] Profile error:", profileError);
+            throw new Error("FORBIDDEN: Perfil de usuario no encontrado.");
+        }
+
+        // 3. RBAC Check
+        if (!isAdmin(profile)) {
+            throw new Error("FORBIDDEN: No tiene permisos de administrador.");
+        }
+
+        // 4. Restaurant Binding Check (unless Super Admin)
+        if (profile.restaurant_id && profile.restaurant_id !== restaurantId && !isSuperAdmin(profile)) {
+            throw new Error("FORBIDDEN: Solo puede gestionar su propio restaurante.");
+        }
+
+        // 5. Perform Update
+        const { error: updateError } = await adminClient
             .from("restaurants")
             .update(updates)
             .eq("id", restaurantId);
 
-        if (error) throw error;
+        if (updateError) {
+            console.error("[Settings] Update error:", updateError);
+            throw updateError;
+        }
+
+        console.log(`[Settings] Successfully updated restaurant ${restaurantId}`);
         return { success: true };
     } catch (error: any) {
         console.error("Error updating restaurant settings:", error);
@@ -643,18 +673,26 @@ export async function getReservationsAction(restaurantId: string, role: string) 
 
 export async function updateReservationStatusAction(reservationId: string, status: string) {
     try {
-        // We need to fetch the restaurant_id first to verify access, or check general admin role
         const supabase = await createClient();
-        const { data: resData } = await supabase.from("reservations").select("restaurant_id").eq("id", reservationId).single();
-        
-        if (resData) {
-            await getAuthContext(resData.restaurant_id, canViewReservations);
-        }
-
         const supabaseAdmin = createAdminClient();
 
-        // 1. Update the status
-        const { data: res, error: updateError } = await supabase
+        // 1. Fetch reservation data with admin client to verify access and get details
+        const { data: resData, error: fetchError } = await supabaseAdmin
+            .from("reservations")
+            .select("restaurant_id, organizer_id, date_time, party_size, unique_code")
+            .eq("id", reservationId)
+            .single();
+        
+        if (fetchError || !resData) {
+            console.error("[UpdateReservation] Fetch error or missing:", fetchError, reservationId);
+            throw new Error("Reservation not found");
+        }
+
+        // 2. Authorization check
+        await getAuthContext(resData.restaurant_id, canViewReservations);
+
+        // 3. Update the status
+        const { data: res, error: updateError } = await supabaseAdmin
             .from("reservations")
             .update({ status })
             .eq("id", reservationId)
@@ -785,21 +823,22 @@ export async function getTakeawayOrdersAction(restaurantId: string, role: string
 export async function updateTakeawayStatusAction(orderId: string, status: string, reason?: string) {
     try {
         const supabase = await createClient();
-        const { data: orderData } = await supabase.from("takeaway_orders").select("restaurant_id").eq("id", orderId).single();
-        if (orderData) {
-            await getAuthContext(orderData.restaurant_id, canViewTakeaway);
-        }
-        
         const supabaseAdmin = createAdminClient();
-        
-        // 1. Fetch current order to validate transition
-        const { data: currentOrder, error: fetchError } = await supabase
+
+        // 1. Fetch current order with admin client to get restaurant_id and current state
+        const { data: currentOrder, error: fetchError } = await supabaseAdmin
             .from("takeaway_orders")
             .select("*")
             .eq("id", orderId)
             .single();
             
-        if (fetchError || !currentOrder) throw new Error("Order not found");
+        if (fetchError || !currentOrder) {
+            console.error("[UpdateStatus] Fetch error or order missing:", fetchError, orderId);
+            throw new Error("Order not found");
+        }
+
+        // 2. Authorization check
+        await getAuthContext(currentOrder.restaurant_id, canViewTakeaway);
 
         const items = typeof currentOrder.items === 'string' ? JSON.parse(currentOrder.items) : (currentOrder.items || []);
 
@@ -870,7 +909,7 @@ export async function updateTakeawayStatusAction(orderId: string, status: string
             metadata: updatedMetadata
         };
 
-        const { data: order, error: updateError } = await supabase
+        const { data: order, error: updateError } = await supabaseAdmin
             .from("takeaway_orders")
             .update(updatePayload)
             .eq("id", orderId)
