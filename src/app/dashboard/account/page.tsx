@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import {
     User, Shield, CreditCard, Users, Search, Plus,
     MoreVertical, CheckCircle2, XCircle, FileText,
-    ExternalLink, Zap, Table, Filter
+    ExternalLink, Zap, Table, Filter, Pencil, X, Loader2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,18 +22,42 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from "@/components/ui/dialog";
+import {
     getRestaurantUsersAction,
-    getPaymentHistoryAction
+    getPaymentHistoryAction,
+    createRestaurantUserAction,
+    updateRestaurantUserAction
 } from "@/app/actions/dashboard-actions";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
+import { isAdmin, canViewReservations, canViewTakeaway, canViewMenu } from "@/lib/permissions";
 
 export default function AccountPage() {
     const { profile } = useAuth();
     const restaurantId = profile?.restaurant_id;
 
     const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
     const [users, setUsers] = useState<any[]>([]);
     const [payments, setPayments] = useState<any[]>([]);
+
+    // User Modal State
+    const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState<any>(null);
+    const [userData, setUserData] = useState({
+        first_name: '',
+        last_name: '',
+        email: '',
+        password: '',
+        role: 'USER'
+    });
 
     const fetchData = async () => {
         if (!restaurantId) return;
@@ -43,9 +67,68 @@ export default function AccountPage() {
             getPaymentHistoryAction(restaurantId)
         ]);
 
-        if (usersRes.success) setUsers(usersRes.data || []);
+        if (usersRes.success) {
+            const sortedUsers = (usersRes.data || []).sort((a: any, b: any) => {
+                const aRole = (a.role || '').toUpperCase();
+                const bRole = (b.role || '').toUpperCase();
+                
+                const aIsPriority = isAdmin(aRole);
+                const bIsPriority = isAdmin(bRole);
+                
+                if (aIsPriority && !bIsPriority) return -1;
+                if (!aIsPriority && bIsPriority) return 1;
+                return 0;
+            });
+            setUsers(sortedUsers);
+        }
         if (paymentsRes.success) setPayments(paymentsRes.data || []);
         setLoading(false);
+    };
+
+    const handleOpenCreateModal = () => {
+        setEditingUser(null);
+        setUserData({ first_name: '', last_name: '', email: '', password: '', role: 'USER' });
+        setIsUserModalOpen(true);
+    };
+
+    const handleOpenEditModal = (user: any) => {
+        setEditingUser(user);
+        const lowerRole = (user.role || '').toLowerCase();
+        setUserData({
+            first_name: user.first_name || '',
+            last_name: user.last_name || '',
+            email: user.email || '',
+            password: '', 
+            role: isAdmin(user.role) ? 'RESTAURANT_ADMIN' : 'USER'
+        });
+        setIsUserModalOpen(true);
+    };
+
+    const handleSaveUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!restaurantId) return;
+        setSubmitting(true);
+
+        try {
+            let res;
+            if (editingUser) {
+                res = await updateRestaurantUserAction(editingUser.id, userData);
+            } else {
+                res = await createRestaurantUserAction(restaurantId, userData);
+            }
+
+            if (res.success) {
+                toast.success(editingUser ? "Usuario actualizado" : "Usuario creado y transferido al backend");
+                setIsUserModalOpen(false);
+                fetchData();
+            } else {
+                toast.error(res.error || "Error al procesar el usuario");
+            }
+        } catch (error: any) {
+            toast.error(error.message);
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     useEffect(() => {
@@ -116,7 +199,10 @@ export default function AccountPage() {
                                 <Search className="w-4 h-4" />
                                 <Input placeholder="Buscar por email..." className="border-none bg-transparent shadow-none font-bold text-xs w-48 focus-visible:ring-0" />
                             </div>
-                            <Button className="bg-slate-900 rounded-[1.2rem] font-black uppercase text-[10px] tracking-widest px-6 h-12 shadow-lg hover:scale-105 transition-transform duration-300">
+                            <Button 
+                                onClick={handleOpenCreateModal}
+                                className="bg-slate-900 rounded-[1.2rem] font-black uppercase text-[10px] tracking-widest px-6 h-12 shadow-lg hover:scale-105 transition-transform duration-300"
+                            >
                                 <Plus className="w-4 h-4 mr-2 stroke-[3px]" /> Agregar Invitado
                             </Button>
                         </div>
@@ -144,7 +230,7 @@ export default function AccountPage() {
                                             <TableCell>
                                                 <div className="font-black text-slate-800 text-sm">
                                                     {user.first_name} {user.last_name}
-                                                    {user.role === 'ADMIN' && <Badge className="ml-2 bg-blue-100 text-blue-700 hover:bg-blue-100 border-none font-black text-[8px] uppercase px-1.5 py-0">ADMIN MASTER</Badge>}
+                                                    {isAdmin(user.role) && <Badge className="ml-2 bg-blue-100 text-blue-700 hover:bg-blue-100 border-none font-black text-[8px] uppercase px-1.5 py-0">ADMIN MASTER</Badge>}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="font-bold text-slate-500 text-xs">{user.email || "---"}</TableCell>
@@ -153,28 +239,33 @@ export default function AccountPage() {
                                             </TableCell>
                                             <TableCell className="text-center">
                                                 <Switch
-                                                    checked={user.role === 'ADMIN' || user.role === 'RESERVAS'}
+                                                    checked={canViewReservations(user.role)}
                                                     disabled={true}
                                                     className="data-[state=checked]:bg-blue-600 scale-90"
                                                 />
                                             </TableCell>
                                             <TableCell className="text-center">
                                                 <Switch
-                                                    checked={user.role === 'ADMIN' || user.role === 'PEDIDOS'}
+                                                    checked={canViewTakeaway(user.role)}
                                                     disabled={true}
                                                     className="data-[state=checked]:bg-emerald-600 scale-90"
                                                 />
                                             </TableCell>
                                             <TableCell className="text-center">
                                                 <Switch
-                                                    checked={user.role === 'ADMIN'}
+                                                    checked={isAdmin(user.role)}
                                                     disabled={true}
                                                     className="data-[state=checked]:bg-slate-900 scale-90"
                                                 />
                                             </TableCell>
-                                            <TableCell>
-                                                <Button variant="ghost" size="icon" className="rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <MoreVertical className="w-4 h-4 text-slate-400" />
+                                            <TableCell className="text-right">
+                                                <Button 
+                                                    variant="outline" 
+                                                    onClick={() => handleOpenEditModal(user)}
+                                                    className="rounded-xl border-slate-200 hover:bg-slate-900 hover:text-white hover:border-slate-900 font-black uppercase text-[9px] tracking-widest h-9 px-4 opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-sm"
+                                                >
+                                                    <Pencil className="w-3 h-3 mr-2" />
+                                                    Editar
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
@@ -269,6 +360,102 @@ export default function AccountPage() {
                     </Card>
                 </div>
             </div>
+
+            {/* User Management Modal */}
+            <Dialog open={isUserModalOpen} onOpenChange={setIsUserModalOpen}>
+                <DialogContent className="max-w-md rounded-[2.5rem] border-none shadow-2xl p-0 overflow-hidden bg-white">
+                    <DialogHeader className="p-10 pb-6 bg-slate-50/50">
+                        <DialogTitle className="text-2xl font-black uppercase tracking-tight text-slate-800">
+                            {editingUser ? "Actualizar Usuario" : "Nuevo Acceso"}
+                        </DialogTitle>
+                        <DialogDescription className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-2 leading-relaxed">
+                            {editingUser 
+                                ? "Modifica los datos del usuario seleccionado. Los cambios se sincronizarán con el backend." 
+                                : "Crea una nueva cuenta de acceso. Al confirmar, el usuario será exportado automáticamente al backend de administración."}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <form onSubmit={handleSaveUser} className="p-10 pt-4 space-y-6">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Nombre</label>
+                                <Input 
+                                    required
+                                    value={userData.first_name}
+                                    onChange={(e) => setUserData({ ...userData, first_name: e.target.value })}
+                                    className="rounded-2xl border-slate-100 bg-slate-50/50 h-12 font-bold text-xs focus-visible:ring-blue-500"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Apellido</label>
+                                <Input 
+                                    required
+                                    value={userData.last_name}
+                                    onChange={(e) => setUserData({ ...userData, last_name: e.target.value })}
+                                    className="rounded-2xl border-slate-100 bg-slate-50/50 h-12 font-bold text-xs focus-visible:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">E-mail</label>
+                            <Input 
+                                type="email"
+                                required
+                                disabled={!!editingUser}
+                                value={userData.email}
+                                onChange={(e) => setUserData({ ...userData, email: e.target.value })}
+                                className="rounded-2xl border-slate-100 bg-slate-50/50 h-12 font-bold text-xs focus-visible:ring-blue-500 disabled:opacity-50"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">
+                                {editingUser ? "Nueva Contraseña (Opcional)" : "Contraseña Inicial"}
+                            </label>
+                            <Input 
+                                type="text"
+                                required={!editingUser}
+                                minLength={6}
+                                value={userData.password}
+                                onChange={(e) => setUserData({ ...userData, password: e.target.value })}
+                                className="rounded-2xl border-slate-100 bg-slate-50/50 h-12 font-bold text-xs focus-visible:ring-blue-500"
+                                placeholder={editingUser ? "Dejar vacío para no cambiar" : "Mín. 6 caracteres"}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Rol de Acceso</label>
+                            <select 
+                                className="w-full rounded-2xl border border-slate-100 bg-slate-50/50 h-12 font-bold text-xs px-4 focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                                value={userData.role}
+                                onChange={(e) => setUserData({ ...userData, role: e.target.value })}
+                            >
+                                <option value="USER">OPERATIVO (SOLO LECTURA)</option>
+                                <option value="RESTAURANT_ADMIN">ADMINISTRADOR LOCAL</option>
+                            </select>
+                        </div>
+
+                        <DialogFooter className="pt-6 flex gap-3 sm:justify-between">
+                            <Button 
+                                type="button" 
+                                variant="ghost"
+                                onClick={() => setIsUserModalOpen(false)}
+                                className="flex-1 rounded-2xl font-black uppercase text-[10px] tracking-widest h-12 border border-slate-100"
+                            >
+                                Cancelar
+                            </Button>
+                            <Button 
+                                type="submit"
+                                disabled={submitting}
+                                className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest h-12 shadow-lg shadow-blue-200"
+                            >
+                                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingUser ? "Guardar Cambios" : "Confirmar y Exportar")}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

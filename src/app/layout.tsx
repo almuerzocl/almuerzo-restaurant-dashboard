@@ -16,6 +16,9 @@ const geistMono = localFont({
   weight: "100 900",
 });
 
+import Script from "next/script";
+import { GA_MEASUREMENT_ID } from "@/lib/ga4";
+
 export const metadata: Metadata = {
   title: "Restaurant Dashboard",
   description: "Almuerzo.cl Restaurant Operations",
@@ -28,6 +31,22 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
+      <head>
+        <Script
+          strategy="afterInteractive"
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${GA_MEASUREMENT_ID}', {
+              page_path: window.location.pathname,
+            });
+          `}
+        </Script>
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased max-w-full overflow-x-hidden text-foreground bg-background`}
       >

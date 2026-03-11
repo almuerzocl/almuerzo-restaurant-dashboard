@@ -13,13 +13,13 @@ import BlockSeatsDialog from "@/components/dashboard/BlockSeatsDialog";
 import ManualReservationDialog from "@/components/dashboard/ManualReservationDialog";
 import ReservationList from "@/components/dashboard/ReservationList";
 import ReservationsKanban from "@/components/dashboard/ReservationsKanban";
+import { canViewReservations } from "@/lib/permissions";
 import { trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 
 export default function ReservationsPage() {
     const { profile } = useAuth();
-    const role = profile?.role?.toUpperCase();
-    const canViewReservations = role && ['ADMIN', 'OPERATIONS_MANAGER', 'RESERVATION_MANAGER', 'OWNER', 'SUPER_ADMIN', 'RESTAURANT_ADMIN'].includes(role);
-    if (!canViewReservations) {
+    const hasReservationsAccess = canViewReservations(profile as any);
+    if (!hasReservationsAccess) {
         return (
             <div className="flex items-center justify-center h-full">
                 <p className="text-muted-foreground">Acceso denegado: no tiene permisos para ver reservas.</p>

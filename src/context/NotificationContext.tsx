@@ -81,7 +81,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                     });
 
                     // If critical (new order or reservation), show blocker
-                    if (newNotification.type === 'order' || newNotification.type === 'reservation') {
+                    if (['order', 'Takeaway', 'TAKEAWAY', 'reservation', 'Reservation', 'RESERVATION'].includes(newNotification.type)) {
                         setCriticalNotification({
                             isOpen: true,
                             title: newNotification.title,

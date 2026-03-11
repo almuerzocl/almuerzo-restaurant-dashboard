@@ -16,11 +16,12 @@ import TakeawayOrderList from "@/components/dashboard/TakeawayOrderList";
 import TakeawayKanban from "@/components/dashboard/TakeawayKanban";
 import { trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 
+import { canViewTakeaway } from "@/lib/permissions";
+
 export default function TakeawayPage() {
     const { profile } = useAuth();
-    const role = profile?.role?.toUpperCase();
-    const canViewTakeaway = role && ['ADMIN', 'OPERATIONS_MANAGER', 'TAKEAWAY_MANAGER', 'OWNER', 'SUPER_ADMIN', 'RESTAURANT_ADMIN'].includes(role);
-    if (!canViewTakeaway) {
+    const hasTakeawayAccess = canViewTakeaway(profile as any);
+    if (!hasTakeawayAccess) {
         return (
             <div className="flex items-center justify-center h-full">
                 <p className="text-muted-foreground">Acceso denegado: no tiene permisos para ver pedidos takeaway.</p>
@@ -39,16 +40,15 @@ export default function TakeawayPage() {
         <div className="flex flex-col gap-6 max-w-7xl mx-auto pb-20">
             <div className="space-y-1">
                 <h1 className="text-3xl font-black tracking-tight leading-none text-emerald-600">Pedidos</h1>
-                <p className="text-muted-foreground">Flujo de Delivery/Takeaway</p>
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full md:w-[400px] grid-cols-2 mb-8 bg-muted/60 p-1">
                     <TabsTrigger value="panel" className="rounded-md font-bold text-sm tracking-tight data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                        Producción (Kanban)
+                        Producción
                     </TabsTrigger>
                     <TabsTrigger value="gestion" className="rounded-md font-bold text-sm tracking-tight data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                        Historial & Detalles
+                        Historial
                     </TabsTrigger>
                 </TabsList>
 

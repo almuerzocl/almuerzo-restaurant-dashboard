@@ -140,7 +140,7 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
                                         const items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
                                         const itemCount = items.reduce((acc: number, item: any) => acc + (Number(item.quantity) || 1), 0);
                                         const orderCode = order.id.split('-')[0].toUpperCase();
-                                        const ticketUrl = `https://ticket2.almuerzo.cl/v/${order.id}`;
+                                        const ticketUrl = `https://ticket.almuerzo.cl/o/${order.id}`;
                                         const pickupTime = order.metadata?.pickup_time || format(new Date(order.created_at), "HH:mm");
                                         
                                         // No Show Logic: 1 hour after ready_at (check root and metadata)

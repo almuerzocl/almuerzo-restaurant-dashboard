@@ -1,14 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
     getRestaurantSettingsAction,
     updateRestaurantSettingsAction,
     getReservationBlocksAction,
     deleteReservationBlockAction,
-    blockSeatsAction
+    blockSeatsAction,
+    trackAnalyticsEventAction
 } from "@/app/actions/dashboard-actions";
+import { isAdmin } from "@/lib/permissions";
+import { supabase } from "@/lib/supabase";
 import {
     Settings as SettingsIcon, CalendarCheck, ShoppingBag, Clock, Users, Trophy, DollarSign,
     Package, Store, Timer, AlertCircle, Info, MapPin, Phone, FileText, ChevronRight,
@@ -31,6 +34,7 @@ import { cn } from "@/lib/utils";
 
 export default function SystemManagementPage() {
     const { profile } = useAuth();
+    const canViewSettings = isAdmin(profile as any);
     const restaurantId = profile?.restaurant_id;
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -38,6 +42,8 @@ export default function SystemManagementPage() {
     const [blocks, setBlocks] = useState<any[]>([]);
     const [fetchError, setFetchError] = useState<string | null>(null);
     const [newBlock, setNewBlock] = useState({ start: "", end: "", reason: "", seats: 0 });
+    const logoInputRef = useRef<HTMLInputElement>(null);
+    const coverInputRef = useRef<HTMLInputElement>(null);
 
     const fetchData = async () => {
         if (!restaurantId) return;
@@ -67,7 +73,20 @@ export default function SystemManagementPage() {
 
     useEffect(() => {
         fetchData();
-    }, [restaurantId]);
+        if (restaurantId && profile?.id) {
+            trackAnalyticsEventAction(restaurantId, 'view_reports', profile.id);
+        }
+    }, [restaurantId, profile?.id]);
+
+    if (!canViewSettings) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+                <AlertCircle className="w-12 h-12 text-slate-300" />
+                <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Acceso Restringido</h2>
+                <p className="text-slate-500 font-medium">No tienes permisos para administrar la configuración del sistema.</p>
+            </div>
+        );
+    }
 
     const handleSave = async (updates: any) => {
         setSaving(true);
@@ -90,6 +109,46 @@ export default function SystemManagementPage() {
             });
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
+        const file = e.target.files?.[0];
+        if (!file || !restaurantId) return;
+
+        setSaving(true);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${restaurantId}-${field}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+            const bucketName = 'restaurants'; // Assuming this bucket exists
+
+            const { data, error: uploadError } = await supabase.storage
+                .from(bucketName)
+                .upload(fileName, file, {
+                    cacheControl: '3600',
+                    upsert: true
+                });
+
+            if (uploadError) {
+                // If bucket doesn't exist, this might fail. In a real scenario, we'd ensure it exists.
+                console.error("Storage upload error:", uploadError);
+                throw new Error("Error al subir archivo a storage: " + uploadError.message);
+            }
+
+            const { data: { publicUrl } } = supabase.storage
+                .from(bucketName)
+                .getPublicUrl(data.path);
+
+            await handleSave({ [field]: publicUrl });
+            toast.success("Imagen actualizada correctamente");
+        } catch (error: any) {
+            console.error("Image upload failed:", error);
+            toast.error("Fallo al subir la imagen", {
+                description: error.message || "Verifica los permisos de almacenamiento."
+            });
+        } finally {
+            setSaving(false);
+            if (e.target) e.target.value = '';
         }
     };
 
@@ -311,6 +370,28 @@ export default function SystemManagementPage() {
                                         </p>
                                     </div>
                                 </div>
+
+                                <Separator className="bg-slate-100 my-6" />
+
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tiempo de Preparación</Label>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase italic leading-tight">
+                                                Estimación promedio en minutos para que el pedido esté listo.
+                                            </p>
+                                        </div>
+                                        <div className="text-3xl font-black text-slate-900">{settings.avg_prep_time || 20} min</div>
+                                    </div>
+                                    <Slider
+                                        defaultValue={[settings.avg_prep_time || 20]}
+                                        max={90}
+                                        min={5}
+                                        step={5}
+                                        onValueCommit={(v) => handleSave({ avg_prep_time: v[0] })}
+                                        className="py-4"
+                                    />
+                                </div>
                             </CardContent>
                         </Card>
 
@@ -362,6 +443,7 @@ export default function SystemManagementPage() {
                                         onValueCommit={(v) => handleSave({ takeaway_settings: { ...takeSettings, min_reputation: v[0] } })}
                                         className="py-4"
                                     />
+
                                     <div className="pt-2">
                                         <Button
                                             className="w-full rounded-2xl font-black uppercase tracking-widest py-6 bg-slate-900 hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
@@ -383,37 +465,43 @@ export default function SystemManagementPage() {
                             <div className="space-y-8">
                                 <div className="space-y-4">
                                     <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Identidad Visual</Label>
-                                    <div className="h-48 w-48 bg-slate-50 rounded-[3rem] flex items-center justify-center border-2 border-slate-100 shadow-inner overflow-hidden relative group cursor-pointer mx-auto lg:mx-0">
+                                    <div 
+                                        onClick={() => logoInputRef.current?.click()}
+                                        className="h-48 w-48 bg-slate-50 rounded-[3rem] flex items-center justify-center border-2 border-slate-100 shadow-inner overflow-hidden relative group cursor-pointer mx-auto lg:mx-0"
+                                    >
                                         {settings.logo_url ? <img src={settings.logo_url} className="w-full h-full object-cover" /> : <Store className="w-12 h-12 text-slate-200" />}
                                         <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col items-center justify-center text-white gap-2">
                                             <Camera className="w-6 h-6" />
-                                            <span className="font-black text-[10px] uppercase tracking-widest">Logo</span>
+                                            <span className="font-black text-[10px] uppercase tracking-widest">{saving ? "Subiendo..." : "Logo"}</span>
                                         </div>
                                     </div>
+                                    <input 
+                                        type="file" 
+                                        ref={logoInputRef} 
+                                        onChange={(e) => handleImageUpload(e, 'logo_url')}
+                                        className="hidden" 
+                                        accept="image/*"
+                                    />
                                 </div>
                                 <div className="space-y-4">
                                     <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cubierta del Local</Label>
-                                    <div className="h-40 w-full bg-slate-50 rounded-[2rem] overflow-hidden border-2 border-slate-100 relative group cursor-pointer shadow-inner">
+                                    <div 
+                                        onClick={() => coverInputRef.current?.click()}
+                                        className="h-40 w-full bg-slate-50 rounded-[2rem] overflow-hidden border-2 border-slate-100 relative group cursor-pointer shadow-inner"
+                                    >
                                         {settings.cover_image_url ? <img src={settings.cover_image_url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-50"><Camera className="w-8 h-8 text-slate-100" /></div>}
                                         <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col items-center justify-center text-white gap-2">
                                             <FileText className="w-6 h-6" />
-                                            <span className="font-black text-[10px] uppercase tracking-widest">Editar Portada</span>
+                                            <span className="font-black text-[10px] uppercase tracking-widest">{saving ? "Subiendo..." : "Editar Portada"}</span>
                                         </div>
                                     </div>
-                                </div>
-                                <div className="pt-4 space-y-4">
-                                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rango de Precios</Label>
-                                    <div className="flex items-center justify-between gap-4">
-                                        {[1, 2, 3, 4].map((level) => (
-                                            <button
-                                                key={level}
-                                                onClick={() => handleSave({ price_level: level })}
-                                                className={`flex-1 h-12 rounded-xl font-black text-sm transition-all duration-300 border-2 ${settings.price_level === level ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100 hover:border-slate-200'}`}
-                                            >
-                                                {"$".repeat(level)}
-                                            </button>
-                                        ))}
-                                    </div>
+                                    <input 
+                                        type="file" 
+                                        ref={coverInputRef} 
+                                        onChange={(e) => handleImageUpload(e, 'cover_image_url')}
+                                        className="hidden" 
+                                        accept="image/*"
+                                    />
                                 </div>
                             </div>
 
@@ -438,7 +526,7 @@ export default function SystemManagementPage() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Descripción / Slogan</Label>
+                                    <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Descripción</Label>
                                     <Input
                                         defaultValue={settings.description}
                                         onBlur={(e) => handleSave({ description: e.target.value })}
@@ -451,7 +539,7 @@ export default function SystemManagementPage() {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     <div className="space-y-2">
-                                        <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Teléfono Público</Label>
+                                        <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Teléfono</Label>
                                         <div className="relative">
                                             <Phone className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                             <Input
@@ -460,41 +548,6 @@ export default function SystemManagementPage() {
                                                 className="h-14 rounded-2xl border-none bg-slate-50 font-black text-lg focus:ring-2 focus:ring-primary/20 pl-14 pr-6"
                                             />
                                         </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Capacidad Máxima (Mesas/Personas)</Label>
-                                        <div className="relative">
-                                            <Users className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                            <Input
-                                                type="number"
-                                                defaultValue={settings.capacity}
-                                                onBlur={(e) => handleSave({ capacity: parseInt(e.target.value) })}
-                                                className="h-14 rounded-2xl border-none bg-slate-50 font-black text-lg focus:ring-2 focus:ring-primary/20 pl-14 pr-6"
-                                            />
-                                        </div>
-                                        <p className="text-[9px] text-slate-400 font-bold uppercase italic mt-1 ml-1 leading-tight">
-                                            Se refiere a la capacidad física total (mesas o personas) que el local puede albergar simultáneamente.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <Separator className="bg-slate-100" />
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Tiempo Promedio de Preparación</Label>
-                                        <div className="relative">
-                                            <Timer className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                            <Input
-                                                type="number"
-                                                defaultValue={settings.avg_prep_time || 20}
-                                                onBlur={(e) => handleSave({ avg_prep_time: parseInt(e.target.value) })}
-                                                className="h-14 rounded-2xl border-none bg-slate-50 font-black text-lg focus:ring-2 focus:ring-primary/20 pl-14 pr-6"
-                                            />
-                                        </div>
-                                        <p className="text-[9px] text-slate-400 font-bold uppercase italic mt-1 ml-1 leading-tight">
-                                            Estimación en minutos para pedidos para llevar.
-                                        </p>
                                     </div>
                                     <div className="space-y-2">
                                         <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Estado de Operación</Label>
@@ -506,6 +559,92 @@ export default function SystemManagementPage() {
                                                 className="data-[state=checked]:bg-emerald-600"
                                             />
                                         </div>
+                                    </div>
+                                </div>
+
+                                <Separator className="bg-slate-100" />
+
+                                <div className="space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Capacidad Máxima por Espacios</Label>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase italic leading-tight">Define los ambientes y la cantidad de sillas disponibles en cada uno.</p>
+                                        </div>
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            className="rounded-xl border-dashed border-slate-300 font-black uppercase text-[9px] h-9"
+                                            onClick={() => {
+                                                const currentSpaces = Array.isArray(settings.seating_spaces) && settings.seating_spaces.length > 0
+                                                    ? settings.seating_spaces
+                                                    : [{ id: '1', name: 'Salón Principal', capacity: settings.capacity || 20 }];
+                                                const newSpace = { id: Math.random().toString(36).substring(7), name: `Espacio ${currentSpaces.length + 1}`, capacity: 10 };
+                                                const updatedSpaces = [...currentSpaces, newSpace];
+                                                const totalCapacity = updatedSpaces.reduce((acc: number, s: any) => acc + (parseInt(s.capacity?.toString()) || 0), 0);
+                                                handleSave({ seating_spaces: updatedSpaces, capacity: totalCapacity });
+                                            }}
+                                        >
+                                            <Plus className="w-3 h-3 mr-1" /> Agregar Espacio
+                                        </Button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {(settings.seating_spaces || [{ id: '1', name: 'Salón Principal', capacity: settings.capacity || 20 }]).map((space: any, idx: number) => (
+                                            <div key={space.id} className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                                <div className="flex-1">
+                                                    <Input
+                                                        placeholder="Nombre del Espacio (Ej: Terraza)"
+                                                        defaultValue={space.name}
+                                                        onBlur={(e) => {
+                                                            const newSpaces = [...(settings.seating_spaces || [])];
+                                                            newSpaces[idx] = { ...space, name: e.target.value };
+                                                            const totalCapacity = newSpaces.reduce((acc: number, s: any) => acc + (parseInt(s.capacity.toString()) || 0), 0);
+                                                            handleSave({ seating_spaces: newSpaces, capacity: totalCapacity });
+                                                        }}
+                                                        className="h-12 border-none bg-white font-bold text-sm rounded-xl px-4"
+                                                    />
+                                                </div>
+                                                <div className="w-32 relative">
+                                                    <Input
+                                                        type="number"
+                                                        defaultValue={space.capacity}
+                                                        onBlur={(e) => {
+                                                            const newSpaces = [...(settings.seating_spaces || [])];
+                                                            newSpaces[idx] = { ...space, capacity: parseInt(e.target.value) || 0 };
+                                                            const totalCapacity = newSpaces.reduce((acc: number, s: any) => acc + (parseInt(s.capacity.toString()) || 0), 0);
+                                                            handleSave({ seating_spaces: newSpaces, capacity: totalCapacity });
+                                                        }}
+                                                        className="h-12 border-none bg-white font-black text-sm rounded-xl pl-4 pr-12 text-center"
+                                                    />
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-300 uppercase">Sillas</span>
+                                                </div>
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    className="text-slate-300 hover:text-rose-500 rounded-xl"
+                                                    onClick={() => {
+                                                        const newSpaces = (settings.seating_spaces || []).filter((_: any, i: number) => i !== idx);
+                                                        const totalCapacity = newSpaces.reduce((acc: number, s: any) => acc + (parseInt(s.capacity.toString()) || 0), 0);
+                                                        handleSave({ seating_spaces: newSpaces, capacity: totalCapacity });
+                                                    }}
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    
+                                    <div className="bg-slate-900 rounded-[1.5rem] p-6 flex justify-between items-center text-white">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-white/10 rounded-lg">
+                                                <Users className="w-5 h-5 text-white" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Capacidad Total Consolidada</p>
+                                                <p className="text-xl font-black">{(settings.seating_spaces || []).reduce((acc: number, s: any) => acc + (parseInt(s.capacity.toString()) || 0), 0) || settings.capacity || 0} Sillas</p>
+                                            </div>
+                                        </div>
+                                        <Badge className="bg-white/10 text-white border-none font-black text-[10px] uppercase px-3 py-1">V5 Engine</Badge>
                                     </div>
                                 </div>
 

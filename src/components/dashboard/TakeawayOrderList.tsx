@@ -226,7 +226,7 @@ export default function TakeawayOrderList({ restaurantId }: TakeawayOrderListPro
                                         size="sm" 
                                         variant="ghost" 
                                         className="rounded-xl h-10 w-10 p-0"
-                                        onClick={() => window.open(`https://ticket2.almuerzo.cl/v/${order.id}`, '_blank')}
+                                        onClick={() => window.open(`https://ticket.almuerzo.cl/o/${order.id}`, '_blank')}
                                     >
                                         <ExternalLink className="w-4 h-4 text-slate-400" />
                                     </Button>

@@ -36,11 +36,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { canViewMenu as canViewMenuHelper } from "@/lib/permissions";
 
 export default function MenuManagerPage() {
     const { profile } = useAuth();
-    const role = profile?.role?.toUpperCase();
-    const canViewMenu = role && ['ADMIN', 'OPERATIONS_MANAGER', 'MENU_MANAGER', 'OWNER', 'SUPER_ADMIN', 'RESTAURANT_ADMIN'].includes(role);
+    const canViewMenu = canViewMenuHelper(profile as any);
     
     const restaurantId = profile?.restaurant_id;
     const [loading, setLoading] = useState(true);
@@ -201,7 +201,6 @@ export default function MenuManagerPage() {
                         </div>
                         Gestor de Menú
                     </h1>
-                    <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest ml-1">Ingeniería de Menú y Control de Inventarios v6</p>
                 </div>
 
                 <div className="flex flex-wrap gap-4">

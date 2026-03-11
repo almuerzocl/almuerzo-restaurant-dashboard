@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
     CalendarCheck,
@@ -22,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { isAdmin, canViewReservations, canViewTakeaway, canViewMenu, canViewSettings, canViewAccount } from "@/lib/permissions";
 import { trackAnalyticsEventAction } from "@/app/actions/dashboard-actions";
 
 interface DashboardLayoutProps {
@@ -29,21 +31,27 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-    const { profile, signOut } = useAuth();
+    const { profile, signOut, loading: authLoading } = useAuth();
     const [restaurantName, setRestaurantName] = useState<string>("");
+    const router = useRouter();
     const pathname = usePathname();
     const role = profile?.role?.toUpperCase() || 'USER';
-    // Full access for administrators or owners
-    const isAdmin = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'RESTAURANT_ADMIN'].includes(role);
-    // Granular access layers
-    const canViewReservations = isAdmin || ['OPERATIONS_MANAGER', 'RESERVATION_MANAGER'].includes(role);
-    const canViewTakeaway = isAdmin || ['OPERATIONS_MANAGER', 'TAKEAWAY_MANAGER'].includes(role);
-    const canViewMenu = isAdmin || ['OPERATIONS_MANAGER', 'MENU_MANAGER'].includes(role);
-    const canViewSettings = isAdmin; // only admins can access system settings
-    const canViewAccount = isAdmin; // only admins can view account page
+    
+    // Permission checks using unified utility
+    const isUserAdmin = isAdmin(profile as any);
+    const hasReservationsAccess = canViewReservations(profile as any);
+    const hasTakeawayAccess = canViewTakeaway(profile as any);
+    const hasMenuAccess = canViewMenu(profile as any);
+    const hasSettingsAccess = canViewSettings(profile as any);
+    const hasAccountAccess = canViewAccount(profile as any);
     const { unreadCount } = useNotifications();
 
     useEffect(() => {
+        // Redirigir si no hay sesión después de cargar
+        if (!authLoading && !profile) {
+            router.push("/login");
+        }
+
         if (profile?.restaurant_id) {
             const fetchRestaurant = async () => {
                 const { data } = await supabase
@@ -57,12 +65,40 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
             trackAnalyticsEventAction(profile.restaurant_id, 'view_home', profile.id);
         }
-    }, [profile?.restaurant_id, profile?.id]);
+
+        // Listener agresivo para interacción: si el usuario intenta hacer algo sin sesión, mandarlo a login
+        const handleInteraction = () => {
+            if (!profile && !authLoading) {
+                router.push("/login");
+            }
+        };
+
+        window.addEventListener('keydown', handleInteraction);
+        window.addEventListener('mousedown', handleInteraction);
+
+        return () => {
+            window.removeEventListener('keydown', handleInteraction);
+            window.removeEventListener('mousedown', handleInteraction);
+        };
+    }, [profile, authLoading, router]);
+
+    if (authLoading) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-slate-50">
+                <div className="flex flex-col items-center gap-4">
+                    <UtensilsCrossed className="w-12 h-12 text-primary animate-bounce" />
+                    <p className="font-black uppercase tracking-widest text-[10px] text-slate-400">Verificando Credenciales...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!profile) return null;
 
     const renderNavLinks = () => {
         return (
             <nav className="space-y-2 font-medium w-full">
-                {canViewReservations && (
+                {hasReservationsAccess && (
                     <Link
                         href="/dashboard/reservations"
                         className={cn(
@@ -77,7 +113,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     </Link>
                 )}
 
-                {canViewTakeaway && (
+                {hasTakeawayAccess && (
                     <Link
                         href="/dashboard/takeaway"
                         className={cn(
@@ -88,11 +124,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         )}
                     >
                         <ShoppingBag className="w-5 h-5" />
-                        Pedidos (Llevar)
+                        Pedidos
                     </Link>
                 )}
 
-                {canViewMenu && (
+                {hasMenuAccess && (
                     <>
                         <Link
                             href="/dashboard/menu"

@@ -2,8 +2,33 @@ export interface Restaurant {
     id: string;
     name: string;
     logo_url?: string;
+    cover_image_url?: string;
     capacity: number;
-    available_services: string[];
+    cuisine_type?: string;
+    description?: string;
+    phone?: string;
+    address?: any;
+    is_active: boolean;
+    has_reservations: boolean;
+    has_takeaway: boolean;
+    slot_duration: number;
+    avg_prep_time: number;
+    price_level?: number;
+    reservation_settings?: any;
+    takeaway_settings?: any;
+    seating_spaces?: any[];
+    created_at: string;
+}
+
+export interface Profile {
+    id: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    role: string;
+    display_name?: string;
+    restaurant_id?: string;
+    created_at?: string;
 }
 
 export interface Reservation {

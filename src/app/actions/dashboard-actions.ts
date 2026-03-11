@@ -4,6 +4,8 @@ import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { sendEmailAction } from "./email-actions";
 import { BetaAnalyticsDataClient } from "@google-analytics/data";
+import { Profile, Restaurant, Reservation, TakeawayOrder } from "@/types";
+import { isAdmin, isSuperAdmin, canViewReservations, canViewTakeaway, canViewMenu } from "@/lib/permissions";
 
 const analyticsDataClient = new BetaAnalyticsDataClient({
     credentials: {
@@ -11,6 +13,43 @@ const analyticsDataClient = new BetaAnalyticsDataClient({
         private_key: process.env.GA_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     }
 });
+
+/**
+ * Skill: Server-Side RBAC Guard
+ * Verifies that the caller has an active session and the required permissions
+ * to perform an action on a specific restaurant.
+ */
+async function getAuthContext(restaurantId?: string | null, check?: (profile: Profile) => boolean) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+        throw new Error("UNAUTHORIZED: Inicie sesión para continuar.");
+    }
+
+    const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+    if (profileError || !profile) {
+        throw new Error("FORBIDDEN: Perfil no encontrado.");
+    }
+
+    // Role-based check (using centralized helpers)
+    if (check && !check(profile)) {
+        throw new Error("FORBIDDEN: Permisos insuficientes para esta acción.");
+    }
+
+    // Restaurant-binding check
+    if (restaurantId && profile.restaurant_id && profile.restaurant_id !== restaurantId && !isSuperAdmin(profile)) {
+        throw new Error("FORBIDDEN: Solo puede gestionar su propio restaurante.");
+    }
+
+    return { supabase, user, profile };
+}
+
 
 
 export async function getDashboardMetricsAction(restaurantId: string) {
@@ -58,6 +97,7 @@ export async function blockSeatsAction(
     reason: string
 ) {
     try {
+        await getAuthContext(restaurantId, isAdmin);
         const supabase = createAdminClient();
         const { error } = await supabase
             .from("reservation_blocks")
@@ -360,7 +400,7 @@ export async function trackAnalyticsEventAction(
 
 export async function getRestaurantSettingsAction(restaurantId: string) {
     try {
-        const supabase = await createClient();
+        const supabase = createAdminClient();
         const { data, error } = await supabase
             .from("restaurants")
             .select("*")
@@ -381,8 +421,16 @@ export async function getRestaurantSettingsAction(restaurantId: string) {
 
 export async function updateRestaurantSettingsAction(restaurantId: string, updates: any) {
     try {
-        const supabase = createAdminClient();
-        const { error } = await supabase
+        // Verify caller is admin of this restaurant
+        const supabase = await createClient();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) throw new Error("UNAUTHORIZED: Inicie sesión para continuar.");
+
+        const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+        if (!profile || !isAdmin(profile)) throw new Error("FORBIDDEN: Permisos insuficientes.");
+
+        const adminClient = createAdminClient();
+        const { error } = await adminClient
             .from("restaurants")
             .update(updates)
             .eq("id", restaurantId);
@@ -397,9 +445,7 @@ export async function updateRestaurantSettingsAction(restaurantId: string, updat
 
 export async function getMenuItemsAction(restaurantId: string, role: string) {
     try {
-        const roleUpper = role?.toUpperCase();
-        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'MENU_MANAGER', 'OWNER', 'RESTAURANT_ADMIN', 'SUPER_ADMIN'];
-        if (!allowedRoles.includes(roleUpper)) {
+        if (!canViewMenu(role)) {
             return { success: false, error: 'Access denied: insufficient permissions for menu management.' };
         }
         const supabase = await createClient();
@@ -419,6 +465,9 @@ export async function getMenuItemsAction(restaurantId: string, role: string) {
 
 export async function updateMenuItemAction(itemId: string, updates: any) {
     try {
+        // Validation: Need to get restaurant_id from item if not provided? 
+        // For menu items, usually a general canViewMenu check + user binding check is needed
+        await getAuthContext(null, canViewMenu);
         const supabase = createAdminClient();
         const { error } = await supabase
             .from("menu_items")
@@ -435,6 +484,7 @@ export async function updateMenuItemAction(itemId: string, updates: any) {
 
 export async function addMenuItemAction(restaurantId: string, item: any) {
     try {
+        await getAuthContext(restaurantId, canViewMenu);
         const supabase = createAdminClient();
         const { error } = await supabase
             .from("menu_items")
@@ -480,6 +530,80 @@ export async function getRestaurantUsersAction(restaurantId: string) {
     }
 }
 
+export async function createRestaurantUserAction(restaurantId: string, userData: any) {
+    try {
+        await getAuthContext(restaurantId, isAdmin);
+        const { email, password, first_name, last_name, role } = userData;
+        const supabaseAdmin = createAdminClient();
+
+        // 1. Create in Auth
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true,
+            user_metadata: { first_name, last_name }
+        });
+
+        if (authError) throw authError;
+
+        // 2. Create Profile
+        const { error: profileError } = await supabaseAdmin
+            .from('profiles')
+            .upsert({
+                id: authData.user.id,
+                email,
+                first_name,
+                last_name,
+                role: role.toUpperCase(),
+                restaurant_id: restaurantId
+            });
+
+        if (profileError) {
+            await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+            throw profileError;
+        }
+
+        return { success: true };
+    } catch (error: any) {
+        console.error("Error creating restaurant user:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function updateRestaurantUserAction(userId: string, updateData: any) {
+    try {
+        const supabaseAdmin = createAdminClient();
+        
+        // 1. Update Auth if password provided
+        if (updateData.password) {
+            const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+                password: updateData.password
+            });
+            if (authError) throw authError;
+        }
+
+        // 2. Update Profile
+        const profileUpdate: any = {};
+        if (updateData.first_name) profileUpdate.first_name = updateData.first_name;
+        if (updateData.last_name) profileUpdate.last_name = updateData.last_name;
+        if (updateData.role) profileUpdate.role = updateData.role.toUpperCase();
+
+        if (Object.keys(profileUpdate).length > 0) {
+            const { error: profileError } = await supabaseAdmin
+                .from('profiles')
+                .update(profileUpdate)
+                .eq('id', userId);
+            
+            if (profileError) throw profileError;
+        }
+
+        return { success: true };
+    } catch (error: any) {
+        console.error("Error updating restaurant user:", error);
+        return { success: false, error: error.message };
+    }
+}
+
 export async function getPaymentHistoryAction(restaurantId: string) {
     try {
         const supabase = await createClient();
@@ -499,9 +623,7 @@ export async function getPaymentHistoryAction(restaurantId: string) {
 
 export async function getReservationsAction(restaurantId: string, role: string) {
     try {
-        const roleUpper = role?.toUpperCase();
-        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'RESERVATION_MANAGER', 'OWNER', 'RESTAURANT_ADMIN', 'SUPER_ADMIN'];
-        if (!allowedRoles.includes(roleUpper)) {
+        if (!canViewReservations(role)) {
             return { success: false, error: 'Access denied: insufficient permissions for reservations.' };
         }
         const supabase = createAdminClient();
@@ -521,7 +643,15 @@ export async function getReservationsAction(restaurantId: string, role: string) 
 
 export async function updateReservationStatusAction(reservationId: string, status: string) {
     try {
-        const supabase = createAdminClient();
+        // We need to fetch the restaurant_id first to verify access, or check general admin role
+        const supabase = await createClient();
+        const { data: resData } = await supabase.from("reservations").select("restaurant_id").eq("id", reservationId).single();
+        
+        if (resData) {
+            await getAuthContext(resData.restaurant_id, canViewReservations);
+        }
+
+        const supabaseAdmin = createAdminClient();
 
         // 1. Update the status
         const { data: res, error: updateError } = await supabase
@@ -634,9 +764,7 @@ export async function updateReservationStatusAction(reservationId: string, statu
 
 export async function getTakeawayOrdersAction(restaurantId: string, role: string) {
     try {
-        const roleUpper = role?.toUpperCase();
-        const allowedRoles = ['ADMIN', 'OPERATIONS_MANAGER', 'TAKEAWAY_MANAGER', 'OWNER', 'RESTAURANT_ADMIN', 'SUPER_ADMIN'];
-        if (!allowedRoles.includes(roleUpper)) {
+        if (!canViewTakeaway(role)) {
             return { success: false, error: 'Access denied: insufficient permissions for takeaway.' };
         }
         const supabase = createAdminClient();
@@ -656,7 +784,13 @@ export async function getTakeawayOrdersAction(restaurantId: string, role: string
 
 export async function updateTakeawayStatusAction(orderId: string, status: string, reason?: string) {
     try {
-        const supabase = createAdminClient();
+        const supabase = await createClient();
+        const { data: orderData } = await supabase.from("takeaway_orders").select("restaurant_id").eq("id", orderId).single();
+        if (orderData) {
+            await getAuthContext(orderData.restaurant_id, canViewTakeaway);
+        }
+        
+        const supabaseAdmin = createAdminClient();
         
         // 1. Fetch current order to validate transition
         const { data: currentOrder, error: fetchError } = await supabase
@@ -751,11 +885,12 @@ export async function updateTakeawayStatusAction(orderId: string, status: string
         // 4. NOTIFICATIONS (Email & PWA)
         if (order?.user_id) {
             const [userRes, restRes] = await Promise.all([
-                supabase.from("profiles").select("email, first_name").eq("id", order.user_id).single(),
+                supabase.from("profiles").select("email, first_name, phone_number").eq("id", order.user_id).single(),
                 supabase.from("restaurants").select("name").eq("id", order.restaurant_id).single()
             ]);
 
             const userEmail = userRes.data?.email;
+            const userPhone = userRes.data?.phone_number;
             const userName = userRes.data?.first_name || order.customer_name || 'Cliente';
             const restaurantName = restRes.data?.name || 'El Restaurante';
 
@@ -781,30 +916,46 @@ export async function updateTakeawayStatusAction(orderId: string, status: string
             }
 
             // EMAIL on LISTO
-            if (status === 'LISTO' && userEmail) {
-                await sendEmailAction({
-                    to: userEmail,
-                    subject: `🍱 ¡Tu pedido en ${restaurantName} está listo!`,
-                    text: `Hola ${userName},\n\nTu pedido en ${restaurantName} ya está listo para ser retirado.\n\n¡Te esperamos!\n\nAlmuerzo.cl`,
-                    html: `
-                        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 25px; border: 1px solid #f1f5f9; border-radius: 24px; background: white; text-align: center;">
-                            <div style="font-size: 52px; margin-bottom: 15px;">🍱</div>
-                            <h2 style="color: #6366f1; font-weight: 900; margin-bottom: 5px; font-size: 28px;">¡Listo para Retirar!</h2>
-                            <p style="color: #64748b; font-weight: 500; margin-top: 0; font-size: 16px;">
-                                Ya puedes pasar por <strong>${restaurantName}</strong> a buscar tu orden.
-                            </p>
-                            
-                            <div style="background: #f8fafc; padding: 25px; border-radius: 20px; margin: 30px 0; text-align: left;">
-                                <div style="font-size: 10px; text-transform: uppercase; font-weight: 800; color: #94a3b8; letter-spacing: 1.5px; margin-bottom: 4px;">TICKET ID</div>
-                                <div style="font-size: 20px; font-weight: 900; color: #1e293b; font-family: monospace;">#${orderId.substring(0, 8).toUpperCase()}</div>
+            if (status === 'LISTO') {
+                if (userEmail) {
+                    await sendEmailAction({
+                        to: userEmail,
+                        subject: `🍱 ¡Tu pedido en ${restaurantName} está listo!`,
+                        text: `Hola ${userName},\n\nTu pedido en ${restaurantName} ya está listo para ser retirado.\n\n¡Te esperamos!\n\nAlmuerzo.cl`,
+                        html: `
+                            <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 25px; border: 1px solid #f1f5f9; border-radius: 24px; background: white; text-align: center;">
+                                <div style="font-size: 52px; margin-bottom: 15px;">🍱</div>
+                                <h2 style="color: #6366f1; font-weight: 900; margin-bottom: 5px; font-size: 28px;">¡Listo para Retirar!</h2>
+                                <p style="color: #64748b; font-weight: 500; margin-top: 0; font-size: 16px;">
+                                    Ya puedes pasar por <strong>${restaurantName}</strong> a buscar tu orden.
+                                </p>
+                                
+                                <div style="background: #f8fafc; padding: 25px; border-radius: 20px; margin: 30px 0; text-align: left;">
+                                    <div style="font-size: 10px; text-transform: uppercase; font-weight: 800; color: #94a3b8; letter-spacing: 1.5px; margin-bottom: 4px;">TICKET ID</div>
+                                    <div style="font-size: 20px; font-weight: 900; color: #1e293b; font-family: monospace;">#${orderId.substring(0, 8).toUpperCase()}</div>
+                                </div>
+                                
+                                <p style="font-size: 14px; color: #64748b; line-height: 1.6;">
+                                    Muestra este mensaje o indica tu nombre al llegar al restaurante.
+                                </p>
                             </div>
-                            
-                            <p style="font-size: 14px; color: #64748b; line-height: 1.6;">
-                                Muestra este mensaje o indica tu nombre al llegar al restaurante.
-                            </p>
-                        </div>
-                    `
-                });
+                        `
+                    });
+                }
+                
+                // SMS (WhatsApp) on LISTO
+                if (userPhone) {
+                    try {
+                        await supabase.functions.invoke('send-sms', {
+                            body: {
+                                to: userPhone,
+                                message: `🍱 ¡Tu pedido en ${restaurantName} ya está LISTO! Preséntate ahora en el local para retirarlo. Ticket: #${orderId.substring(0, 8).toUpperCase()}`
+                            }
+                        });
+                    } catch (e) {
+                        console.error('Error enviando SMS de confirmación', e);
+                    }
+                }
             }
         }
 

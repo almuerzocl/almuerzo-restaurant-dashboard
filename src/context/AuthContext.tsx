@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter, usePathname } from "next/navigation";
+import * as ga from "@/lib/ga4";
 
 interface AuthContextType {
     user: any | null;
@@ -33,12 +34,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             
             if (session?.user) {
                 setUser(session.user);
+                ga.setUserId(session.user.id);
+                ga.event({
+                    action: 'login',
+                    category: 'authentication',
+                    label: session.user.email,
+                });
                 await fetchProfile(session.user.id);
             } else {
                 setUser(null);
                 setProfile(null);
                 setLoading(false);
-                // Solo redirigir si no estamos ya en login para evitar bucles
                 if (window.location.pathname !== "/login") {
                     router.push("/login");
                 }
