@@ -22,51 +22,53 @@ const analyticsDataClient = new BetaAnalyticsDataClient({
 async function getAuthContext(restaurantId?: string | null, check?: (profile: Profile) => boolean) {
     const supabase = await createClient();
     
-    // Use getUser() for security, but getSession() as a debugging fallback
-    const [userRes, sessionRes] = await Promise.all([
-        supabase.auth.getUser(),
-        supabase.auth.getSession()
-    ]);
+    // Explicitly check for session and user
+    // getUser() is the secure way to verify the JWT
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     
-    let user = userRes.data?.user;
-    const authError = userRes.error;
-    const session = sessionRes.data?.session;
-
     if (!user) {
-        console.warn("Auth context failure (User not found), trying session fallback:", { 
-            authError, 
-            hasSession: !!session
-        });
+        // Fallback to getSession for debugging/stale cases, though less secure
+        const { data: { session } } = await supabase.auth.getSession();
         
-        if (session?.user) {
-             user = session.user;
-        } else {
-            throw new Error("UNAUTHORIZED: Inicie sesión para continuar.");
+        if (!session?.user) {
+            console.error("Auth failure: No user or session found", { authError });
+            throw new Error(`UNAUTHORIZED: Inicie sesión para continuar. (Auth: ${authError?.message || 'No session'})`);
         }
+        
+        console.warn("Auth warning: getUser() failed but getSession() succeeded. Token might be stale.");
+        return { supabase, user: session.user, profile: await fetchProfileForUser(supabase, session.user.id, restaurantId, check) };
     }
 
+    return { supabase, user, profile: await fetchProfileForUser(supabase, user.id, restaurantId, check) };
+}
+
+async function fetchProfileForUser(supabase: any, userId: string, restaurantId?: string | null, check?: (profile: Profile) => boolean) {
     const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
-        .eq("id", user.id)
+        .eq("id", userId)
         .single();
 
     if (profileError || !profile) {
-        console.error("Profile context failure:", profileError, user.id);
+        console.error("Profile fetch failure:", profileError, userId);
         throw new Error("FORBIDDEN: Perfil no encontrado.");
     }
 
     // Role-based check (using centralized helpers)
     if (check && !check(profile)) {
+        console.warn("Permission denied for user:", profile.email, profile.role);
         throw new Error("FORBIDDEN: Permisos insuficientes para esta acción.");
     }
 
     // Restaurant-binding check
-    if (restaurantId && profile.restaurant_id && profile.restaurant_id !== restaurantId && !isSuperAdmin(profile)) {
-        throw new Error("FORBIDDEN: Solo puede gestionar su propio restaurante.");
+    if (restaurantId && profile.restaurant_id && profile.restaurant_id !== restaurantId) {
+        const checkIsSuper = Array.isArray(profile.role) ? profile.role.includes('SUPER_ADMIN') : profile.role === 'SUPER_ADMIN';
+        if (!checkIsSuper) {
+            throw new Error("FORBIDDEN: Solo puede gestionar su propio restaurante.");
+        }
     }
 
-    return { supabase, user, profile };
+    return profile;
 }
 
 
