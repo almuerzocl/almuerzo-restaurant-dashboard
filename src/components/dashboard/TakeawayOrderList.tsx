@@ -29,18 +29,23 @@ interface TakeawayOrderListProps {
 export default function TakeawayOrderList({ restaurantId }: TakeawayOrderListProps) {
     const { profile } = useAuth();
     const [orders, setOrders] = useState<TakeawayOrder[]>([]);
+    const [isFetching, setIsFetching] = useState(false);
     const [loading, setLoading] = useState(true);
 
     const fetchOrders = async () => {
-        if (!restaurantId) return;
-        setLoading(true);
-        const result = await getTakeawayOrdersAction(restaurantId, profile?.role || '');
-        if (result.success) {
-            setOrders(result.data || []);
-        } else {
-            toast.error("Error al cargar pedidos");
+        if (!restaurantId || isFetching) return;
+        setIsFetching(true);
+        try {
+            const result = await getTakeawayOrdersAction(restaurantId, profile?.role || '');
+            if (result.success) {
+                setOrders(result.data || []);
+            } else {
+                toast.error("Error al cargar pedidos");
+            }
+        } finally {
+            setIsFetching(false);
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     useEffect(() => {
