@@ -61,11 +61,8 @@ async function fetchProfileForUser(supabase: any, userId: string, restaurantId?:
     }
 
     // Restaurant-binding check
-    if (restaurantId && profile.restaurant_id && profile.restaurant_id !== restaurantId) {
-        const checkIsSuper = Array.isArray(profile.role) ? profile.role.includes('SUPER_ADMIN') : profile.role === 'SUPER_ADMIN';
-        if (!checkIsSuper) {
-            throw new Error("FORBIDDEN: Solo puede gestionar su propio restaurante.");
-        }
+    if (restaurantId && profile.restaurant_id && profile.restaurant_id !== restaurantId && !isSuperAdmin(profile)) {
+        throw new Error("FORBIDDEN: Solo puede gestionar su propio restaurante.");
     }
 
     return profile;
