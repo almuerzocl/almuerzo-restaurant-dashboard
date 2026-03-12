@@ -18,12 +18,18 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
     const { profile } = useAuth();
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isFetching, setIsFetching] = useState(false);
 
     const fetchOrders = async () => {
-        if (!restaurantId) return;
-        const result = await getTakeawayOrdersAction(restaurantId, profile?.role || '');
-        if (result.success) {
-            setOrders(result.data || []);
+        if (!restaurantId || isFetching) return;
+        setIsFetching(true);
+        try {
+            const result = await getTakeawayOrdersAction(restaurantId, profile?.role || '');
+            if (result.success) {
+                setOrders(result.data || []);
+            }
+        } finally {
+            setIsFetching(false);
         }
     };
 
@@ -116,19 +122,41 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
         }
     };
 
+    const processedOrders = (orders || []).map(order => {
+        const metadata = (() => {
+            try {
+                return typeof order.metadata === 'string' ? JSON.parse(order.metadata) : (order.metadata || {});
+            } catch (e) {
+                return {};
+            }
+        })();
+        const items = (() => {
+            try {
+                return typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+            } catch (e) {
+                return [];
+            }
+        })();
+        return {
+            ...order,
+            parsedMetadata: metadata,
+            parsedItems: items,
+            itemCount: Array.isArray(items) ? items.reduce((acc: number, item: any) => acc + (Number(item.quantity) || 1), 0) : 0,
+            pickupTime: metadata.pickup_time || (order.created_at ? format(new Date(order.created_at), "HH:mm") : "00:00")
+        };
+    });
+
     return (
         <div className="flex flex-col gap-6 h-[calc(100vh-180px)]">
             <div className="flex flex-1 gap-6 overflow-x-auto pb-4 items-start">
                 {columns.map(col => {
-                    const colOrders = orders
+                    const colOrders = processedOrders
                         .filter(o => {
                             if (col.id === 'PENDIENTE') return o.status === 'PENDIENTE' || o.status === 'CREADA';
                             return o.status === col.id;
                         })
                         .sort((a, b) => {
-                            const timeA = (a.metadata?.pickup_time || "23:59");
-                            const timeB = (b.metadata?.pickup_time || "23:59");
-                            return timeA.localeCompare(timeB);
+                            return (a.pickupTime || "23:59").localeCompare(b.pickupTime || "23:59");
                         });
 
                     return (
@@ -153,22 +181,13 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
                                     </div>
                                 ) : (
                                     colOrders.map(order => {
-                                        const items = (() => {
-                                            try {
-                                                const raw = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
-                                                return Array.isArray(raw) ? raw : [];
-                                            } catch (e) {
-                                                console.error("Error parsing items for order", order.id, e);
-                                                return [];
-                                            }
-                                        })();
-                                        const itemCount = items.reduce((acc: number, item: any) => acc + (Number(item.quantity) || 1), 0);
-                                        const orderCode = order.id.split('-')[0].toUpperCase();
+                                        const orderCode = (order.id || "xxxx").split('-')[0].toUpperCase();
                                         const ticketUrl = `https://ticket.almuerzo.cl/o/${order.id}`;
-                                        const pickupTime = order.metadata?.pickup_time || format(new Date(order.created_at), "HH:mm");
+                                        const pickupTime = order.pickupTime;
+                                        const metadata = order.parsedMetadata;
                                         
                                         // No Show Logic: 1 hour after ready_at (check root and metadata)
-                                        const readyAtVal = order.ready_at || (order.metadata as any)?.ready_at;
+                                        const readyAtVal = order.ready_at || metadata.ready_at;
                                         const readyAt = readyAtVal ? new Date(readyAtVal) : null;
                                         const isNoShowEligible = readyAt && (new Date().getTime() - readyAt.getTime() > 3600000);
 
@@ -176,7 +195,7 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
                                             <div
                                                 key={order.id}
                                                 className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-200 flex flex-col gap-4 relative overflow-hidden group hover:border-primary/50 transition-all cursor-pointer"
-                                                onClick={() => window.open(ticketUrl, '_blank')}
+                                                onClick={() => order.id && window.open(ticketUrl, '_blank')}
                                             >
                                                 <div className="flex justify-between items-start">
                                                     <div className="flex flex-col">
@@ -194,7 +213,7 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
                                                 </div>
 
                                                 <div className="grid grid-cols-2 gap-2 bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
-                                                    <span className="text-xs font-black text-slate-700">{itemCount} items</span>
+                                                    <span className="text-xs font-black text-slate-700">{order.itemCount} items</span>
                                                     <span className="text-xs font-black text-emerald-600 text-right">${order.total_amount.toLocaleString('es-CL')}</span>
                                                 </div>
 

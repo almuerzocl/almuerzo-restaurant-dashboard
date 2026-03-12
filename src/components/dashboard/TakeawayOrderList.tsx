@@ -178,9 +178,9 @@ export default function TakeawayOrderList({ restaurantId }: TakeawayOrderListPro
                                     <span className="font-black text-slate-800 text-sm">{order.customer_name}</span>
                                     <div className="flex items-center gap-2">
                                         <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">
-                                            {format(new Date(order.created_at), "HH:mm", { locale: es })}
+                                            {order.created_at ? format(new Date(order.created_at), "HH:mm", { locale: es }) : "--:--"}
                                         </span>
-                                        <span className="text-[10px] font-bold text-primary tracking-widest uppercase">ID: {order.id.substring(0, 8)}</span>
+                                        <span className="text-[10px] font-bold text-primary tracking-widest uppercase">ID: {(order.id || "xxxx").substring(0, 8)}</span>
                                     </div>
                                 </div>
                             </TableCell>
