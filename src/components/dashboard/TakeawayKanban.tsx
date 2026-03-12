@@ -33,7 +33,7 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
         // Initial fetch
         fetchOrders().then(() => setLoading(false));
 
-        // Realtime Subscription
+        // Realtime Subscription (Postgres Changes)
         const channel = supabase
             .channel(`orders-${restaurantId}`)
             .on(
@@ -45,7 +45,7 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
                     filter: `restaurant_id=eq.${restaurantId}`
                 },
                 (payload: any) => {
-                    console.log('Realtime order update:', payload);
+                    console.log('Realtime order update (Postgres):', payload);
                     fetchOrders();
 
                     if (payload.eventType === 'INSERT') {
@@ -58,8 +58,24 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
             )
             .subscribe();
 
+        // Broadcast fallback (Signal from PWA)
+        const signalChannel = supabase
+            .channel(`restaurant-signals-${restaurantId}`)
+            .on(
+                'broadcast',
+                { event: 'new_notification' },
+                (payload: any) => {
+                    console.log('📡 Signal received in Kanban:', payload);
+                    if (payload?.payload?.type === 'takeaway') {
+                        fetchOrders();
+                    }
+                }
+            )
+            .subscribe();
+
         return () => {
             supabase.removeChannel(channel);
+            supabase.removeChannel(signalChannel);
         };
     }, [restaurantId]);
 
@@ -137,7 +153,15 @@ export default function TakeawayKanban({ restaurantId }: TakeawayKanbanProps) {
                                     </div>
                                 ) : (
                                     colOrders.map(order => {
-                                        const items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+                                        const items = (() => {
+                                            try {
+                                                const raw = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+                                                return Array.isArray(raw) ? raw : [];
+                                            } catch (e) {
+                                                console.error("Error parsing items for order", order.id, e);
+                                                return [];
+                                            }
+                                        })();
                                         const itemCount = items.reduce((acc: number, item: any) => acc + (Number(item.quantity) || 1), 0);
                                         const orderCode = order.id.split('-')[0].toUpperCase();
                                         const ticketUrl = `https://ticket.almuerzo.cl/o/${order.id}`;

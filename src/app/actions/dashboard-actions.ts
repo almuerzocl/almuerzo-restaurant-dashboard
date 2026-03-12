@@ -21,10 +21,28 @@ const analyticsDataClient = new BetaAnalyticsDataClient({
  */
 async function getAuthContext(restaurantId?: string | null, check?: (profile: Profile) => boolean) {
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
     
-    if (authError || !user) {
-        throw new Error("UNAUTHORIZED: Inicie sesión para continuar.");
+    // Use getUser() for security, but getSession() as a debugging fallback
+    const [userRes, sessionRes] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.auth.getSession()
+    ]);
+    
+    let user = userRes.data?.user;
+    const authError = userRes.error;
+    const session = sessionRes.data?.session;
+
+    if (!user) {
+        console.warn("Auth context failure (User not found), trying session fallback:", { 
+            authError, 
+            hasSession: !!session
+        });
+        
+        if (session?.user) {
+             user = session.user;
+        } else {
+            throw new Error("UNAUTHORIZED: Inicie sesión para continuar.");
+        }
     }
 
     const { data: profile, error: profileError } = await supabase
@@ -34,6 +52,7 @@ async function getAuthContext(restaurantId?: string | null, check?: (profile: Pr
         .single();
 
     if (profileError || !profile) {
+        console.error("Profile context failure:", profileError, user.id);
         throw new Error("FORBIDDEN: Perfil no encontrado.");
     }
 
@@ -190,7 +209,7 @@ export async function createManualReservationAction(params: {
 
         if (error) throw error;
 
-        const publicTicketUrl = `https://ticket2.almuerzo.cl/v/${code}`;
+        const publicTicketUrl = `https://ticket.almuerzo.cl/v/${code}`;
 
         // Send Email Proof / Invitation
         if (params.customerEmail) {
@@ -320,7 +339,7 @@ export async function getGA4StatsAction(
             ],
             dimensions: [
                 {
-                    name: "customEvent:restaurant_id", // Asume que GA4 tiene el custom dimension 'restaurant_id'
+                    name: "restaurant_id", // Standard GA4 custom dimension name
                 },
             ],
             metrics: [
@@ -333,7 +352,7 @@ export async function getGA4StatsAction(
             ],
             dimensionFilter: {
                 filter: {
-                    fieldName: "customEvent:restaurant_id",
+                    fieldName: "restaurant_id",
                     stringFilter: {
                         value: restaurantId,
                     }
@@ -760,7 +779,7 @@ export async function updateReservationStatusAction(reservationId: string, statu
                             <div style="margin-top: 40px; padding-top: 25px; border-top: 1px solid #f1f5f9;">
                                 <div style="font-size: 11px; font-weight: bold; color: #1e293b;">${restaurantName}</div>
                                 <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">${restRes.data?.address?.street || ''} ${restRes.data?.address?.number || ''}</div>
-                                 <a href="https://ticket2.almuerzo.cl" style="display: inline-block; margin-top: 20px; color: #10b981; font-weight: 900; text-decoration: none; font-size: 12px; letter-spacing: 0.5px;">ALMUERZO.CL</a>
+                                 <a href="https://ticket.almuerzo.cl" style="display: inline-block; margin-top: 20px; color: #10b981; font-weight: 900; text-decoration: none; font-size: 12px; letter-spacing: 0.5px;">ALMUERZO.CL</a>
                             </div>
                         </div>
                     `
@@ -861,8 +880,13 @@ export async function updateTakeawayStatusAction(orderId: string, status: string
         }
 
         // Rule: NO SHOW can only happen after LISTO
-        if (status === 'NO SHOW' && currentStatus !== 'LISTO') {
-             throw new Error("Invalid transition: Only LISTO orders can be marked as NO SHOW.");
+        if (status === 'NO SHOW' && (currentStatus !== 'LISTO' && currentStatus !== 'ENTREGADO')) {
+             throw new Error("Invalid transition: Only LISTO or ENTREGADO orders can be marked as NO SHOW.");
+        }
+
+        // Rule: Allow ENTREGADO from LISTO or PREPARANDO or APROBADA (to rescue stuck orders)
+        if (status === 'ENTREGADO' && !['LISTO', 'PREPARANDO', 'APROBADA'].includes(currentStatus)) {
+            throw new Error(`Invalid transition: Cannot deliver order that is ${currentStatus}`);
         }
 
         // 2.5 INVENTORY CONTROL: Validate and Deduct stock on APROBADA

@@ -89,12 +89,24 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                             message: newNotification.message,
                             type: 'success'
                         });
+                        
+                        // Signal broadcast for immediate UI refresh in Kanban and other views
+                        supabase.channel(`restaurant-signals-${restaurantId}`).send({
+                            type: 'broadcast',
+                            event: 'new_notification',
+                            payload: { 
+                                type: newNotification.type.toLowerCase().includes('reservation') ? 'reservation' : 'takeaway',
+                                title: newNotification.title,
+                                message: newNotification.message
+                            }
+                        });
                     }
 
-                    // Sound effect
+                    // Sound effect with improved handling
                     try {
-                        const audio = new Audio('/notification.mp3');
-                        audio.play().catch(() => { });
+                        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+                        audio.volume = 0.5;
+                        audio.play().catch(e => console.log("Audio playback blocked by browser until user interaction."));
                     } catch (e) { }
                 }
             )
@@ -128,7 +140,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
                         // Sound
                         try {
-                            const audio = new Audio('/notification.mp3');
+                            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+                            audio.volume = 0.5;
                             audio.play().catch(() => { });
                         } catch (e) { }
                     }
@@ -146,19 +159,21 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                     { event: 'new_notification' },
                     (payload: any) => {
                         console.log('📡 Signal received from PWA:', payload);
+                        if (!payload?.payload) return;
                         const { title, message, type } = payload.payload;
 
                         // Show blocking notification immediately
                         setCriticalNotification({
                             isOpen: true,
-                            title: title || '🥡 ¡Nueva Notificación!',
+                            title: title || (type === 'reservation' ? '📅 Nueva Reserva' : '🥡 ¡Nueva Notificación!'),
                             message: message || 'Se ha recibido una actualización en tiempo real.',
                             type: 'success'
                         });
 
                         // Sound
                         try {
-                            const audio = new Audio('/notification.mp3');
+                            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+                            audio.volume = 0.5;
                             audio.play().catch(() => { });
                         } catch (e) { }
                     }

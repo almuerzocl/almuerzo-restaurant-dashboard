@@ -148,11 +148,11 @@ BEGIN
             'reservation_starts', (SELECT count(*) FROM public.restaurant_analytics_events WHERE restaurant_id = p_restaurant_id AND event_type = 'reservation_start' AND created_at BETWEEN p_start_time AND p_end_time),
             'reservation_completes', (SELECT count(*) FROM public.reservations WHERE restaurant_id = p_restaurant_id AND status IN ('CONFIRMADA', 'COMPLETADA', 'CHECK-IN CLIENTE') AND created_at BETWEEN p_start_time AND p_end_time),
             'takeaway_starts', (SELECT count(*) FROM public.restaurant_analytics_events WHERE restaurant_id = p_restaurant_id AND event_type = 'takeaway_start' AND created_at BETWEEN p_start_time AND p_end_time),
-            'takeaway_completes', (SELECT count(*) FROM public.takeaway_orders WHERE restaurant_id = p_restaurant_id AND status IN ('ENTREGADO', 'COMPLETADO', 'LISTO') AND created_at BETWEEN p_start_time AND p_end_time)
+            'takeaway_completes', (SELECT count(*) FROM public.takeaway_orders WHERE restaurant_id = p_restaurant_id AND status IN ('ENTREGADO', 'COMPLETADO', 'LISTO', 'APROBADA', 'PREPARANDO') AND created_at BETWEEN p_start_time AND p_end_time)
         ),
         'financial', jsonb_build_object(
-            'total_revenue', (SELECT COALESCE(SUM(total_amount), 0) FROM public.takeaway_orders WHERE restaurant_id = p_restaurant_id AND status IN ('ENTREGADO', 'COMPLETADO', 'LISTO') AND created_at BETWEEN p_start_time AND p_end_time),
-            'avg_ticket', (SELECT COALESCE(AVG(total_amount), 0) FROM public.takeaway_orders WHERE restaurant_id = p_restaurant_id AND status IN ('ENTREGADO', 'COMPLETADO', 'LISTO') AND created_at BETWEEN p_start_time AND p_end_time)
+            'total_revenue', (SELECT COALESCE(SUM(total_amount), 0) FROM public.takeaway_orders WHERE restaurant_id = p_restaurant_id AND status IN ('ENTREGADO', 'COMPLETADO', 'LISTO', 'APROBADA', 'PREPARANDO') AND created_at BETWEEN p_start_time AND p_end_time),
+            'avg_ticket', (SELECT COALESCE(AVG(total_amount), 0) FROM public.takeaway_orders WHERE restaurant_id = p_restaurant_id AND status IN ('ENTREGADO', 'COMPLETADO', 'LISTO', 'APROBADA', 'PREPARANDO') AND created_at BETWEEN p_start_time AND p_end_time)
         ),
         'current', jsonb_build_object(
             'favorites', (SELECT count(*) FROM public.profiles WHERE p_restaurant_id::text = ANY(favorite_restaurant_ids)),
@@ -165,13 +165,13 @@ BEGIN
             'home_views', (SELECT count(*)::numeric / v_rest_count FROM public.restaurant_analytics_events WHERE event_type = 'view_home' AND created_at BETWEEN p_start_time AND p_end_time),
             'menu_views', (SELECT count(*)::numeric / v_rest_count FROM public.restaurant_analytics_events WHERE event_type = 'view_menu' AND created_at BETWEEN p_start_time AND p_end_time),
             'reservation_starts', (SELECT count(*)::numeric / v_rest_count FROM public.restaurant_analytics_events WHERE event_type = 'reservation_start' AND created_at BETWEEN p_start_time AND p_end_time),
-            'reservation_completes', (SELECT count(*)::numeric / v_rest_count FROM public.reservations WHERE status IN ('CONFIRMADA', 'COMPLETADA', 'CHECK-IN CLIENTE') AND created_at BETWEEN p_start_time AND p_end_time),
+            'reservation_completes', (SELECT count(*)::numeric / v_rest_count FROM public.reservations WHERE status IN ('CONFIRMADA', 'COMPLETADA', 'CHECK-IN CLIENTE', 'CREADA') AND created_at BETWEEN p_start_time AND p_end_time),
             'takeaway_starts', (SELECT count(*)::numeric / v_rest_count FROM public.restaurant_analytics_events WHERE event_type = 'takeaway_start' AND created_at BETWEEN p_start_time AND p_end_time),
-            'takeaway_completes', (SELECT count(*)::numeric / v_rest_count FROM public.takeaway_orders WHERE status IN ('ENTREGADO', 'COMPLETADO', 'LISTO') AND created_at BETWEEN p_start_time AND p_end_time)
+            'takeaway_completes', (SELECT count(*)::numeric / v_rest_count FROM public.takeaway_orders WHERE status IN ('ENTREGADO', 'COMPLETADO', 'LISTO', 'APROBADA', 'PREPARANDO') AND created_at BETWEEN p_start_time AND p_end_time)
         ),
         'financial', jsonb_build_object(
-            'total_revenue', (SELECT SUM(total_amount) / v_rest_count FROM public.takeaway_orders WHERE status IN ('ENTREGADO', 'COMPLETADO', 'LISTO') AND created_at BETWEEN p_start_time AND p_end_time),
-            'avg_ticket', (SELECT AVG(total_amount) FROM public.takeaway_orders WHERE status IN ('ENTREGADO', 'COMPLETADO', 'LISTO') AND created_at BETWEEN p_start_time AND p_end_time)
+            'total_revenue', (SELECT SUM(total_amount) / v_rest_count FROM public.takeaway_orders WHERE status IN ('ENTREGADO', 'COMPLETADO', 'LISTO', 'APROBADA', 'PREPARANDO') AND created_at BETWEEN p_start_time AND p_end_time),
+            'avg_ticket', (SELECT AVG(total_amount) FROM public.takeaway_orders WHERE status IN ('ENTREGADO', 'COMPLETADO', 'LISTO', 'APROBADA', 'PREPARANDO') AND created_at BETWEEN p_start_time AND p_end_time)
         ),
         'current', jsonb_build_object(
             'favorites', (SELECT COALESCE(AVG(cardinality(favorite_restaurant_ids)), 0) FROM public.profiles),

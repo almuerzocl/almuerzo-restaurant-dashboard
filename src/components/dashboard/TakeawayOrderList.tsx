@@ -49,7 +49,7 @@ export default function TakeawayOrderList({ restaurantId }: TakeawayOrderListPro
         // Initial fetch
         fetchOrders();
 
-        // Realtime Subscription
+        // Realtime Subscription (Postgres Changes)
         const channel = supabase
             .channel(`takeaway-list-${restaurantId}`)
             .on(
@@ -61,7 +61,7 @@ export default function TakeawayOrderList({ restaurantId }: TakeawayOrderListPro
                     filter: `restaurant_id=eq.${restaurantId}`
                 },
                 (payload: any) => {
-                    console.log('Realtime takeaway list update:', payload);
+                    console.log('Realtime takeaway list update (Postgres):', payload);
                     fetchOrders();
 
                     if (payload.eventType === 'INSERT') {
@@ -74,8 +74,24 @@ export default function TakeawayOrderList({ restaurantId }: TakeawayOrderListPro
             )
             .subscribe();
 
+        // Broadcast fallback (Signal from PWA)
+        const signalChannel = supabase
+            .channel(`restaurant-signals-${restaurantId}`)
+            .on(
+                'broadcast',
+                { event: 'new_notification' },
+                (payload: any) => {
+                    console.log('📡 Signal received in OrderList:', payload);
+                    if (payload?.payload?.type === 'takeaway') {
+                        fetchOrders();
+                    }
+                }
+            )
+            .subscribe();
+
         return () => {
             supabase.removeChannel(channel);
+            supabase.removeChannel(signalChannel);
         };
     }, [restaurantId]);
 

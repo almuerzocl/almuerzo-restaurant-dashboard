@@ -75,8 +75,24 @@ export default function ReservationList({ restaurantId }: ReservationListProps) 
             )
             .subscribe();
 
+        // Broadcast fallback (Signal from PWA or Context)
+        const signalChannel = supabase
+            .channel(`restaurant-signals-list-${restaurantId}`)
+            .on(
+                'broadcast',
+                { event: 'new_notification' },
+                (payload: any) => {
+                    console.log('📡 Signal received in ReservationList:', payload);
+                    if (payload.payload.type === 'reservation') {
+                        fetchReservations();
+                    }
+                }
+            )
+            .subscribe();
+
         return () => {
             supabase.removeChannel(channel);
+            supabase.removeChannel(signalChannel);
         };
     }, [restaurantId]);
 
@@ -220,7 +236,12 @@ export default function ReservationList({ restaurantId }: ReservationListProps) 
                                                 <CheckCircle2 className="w-4 h-4" /> Finalizar
                                             </Button>
                                         )}
-                                        <Button size="sm" variant="ghost" className="rounded-xl h-10 w-10 p-0">
+                                        <Button 
+                                            size="sm" 
+                                            variant="ghost" 
+                                            className="rounded-xl h-10 w-10 p-0"
+                                            onClick={() => window.open(`https://ticket.almuerzo.cl/v/${res.unique_code}`, '_blank')}
+                                        >
                                             <ExternalLink className="w-4 h-4 text-slate-400" />
                                         </Button>
                                     </div>
